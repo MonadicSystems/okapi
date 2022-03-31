@@ -2,6 +2,8 @@
 
 A microframework based on monadic parsing. Official docs [here](https://www.okapi.wiki/).
 
+![Okapi mascot](https://github.com/MonadicSystems/okapi/blob/main/okapi.png?raw=true)
+
 ## Introduction
 
 **Okapi** is a microframework for building web servers in [Haskell](https://haskell.org) based on *monadic parsing*.
