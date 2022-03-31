@@ -1,6 +1,6 @@
 # Okapi
 
-A monadic parser for HTTP requests.
+A monadic parser for HTTP requests. Official docs [here](https://www.okapi.wiki/).
 
 ## Introduction
 
@@ -189,13 +189,10 @@ getArgs = getArgsFromPath <|> getArgsFromQueryParams
 
 ```
 
-> Notice how `respondJSON` is replaced with it's applicative variant `respondJSONAp` in the applicative parsers.
-> Okapi exposes other applicative variants of the monadic parsers where necessary.
-> They will have the same name as their monadic cousins, but ending with `Ap` for `Applicative`.
-
-> The parser for the div calculator is still monadic because it needs to "inspect" the value inside the context and make an effectful decision based on the value. Some people call this a *data-dependent effect*. For parsers that don't have data-dependent effects, they can be applicative if you like.
-
-
 As you can see, Okapi's parsing functions are very modular and can be easily composed with one another to create parsing primitives tailored specifically to your needs.
 With Okapi, and the rest of the amazing Haskell ecosystem, you can create anything from simple website servers to complex APIs for web apps.
 All you need to get started is basic knowledge about the structure of HTTP requests and an idea of how monadic parsing works.
+
+## Contributing
+
+Help is needed! There are issues and project board. Look there or open an issue or PR. There are no barriers. Any kind of help is welcome.
