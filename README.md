@@ -2,7 +2,7 @@
 
 A microframework based on monadic parsing. Official docs [here](https://www.okapi.wiki/).
 
-![Okapi mascot](https://github.com/MonadicSystems/okapi/blob/main/okapi.png?raw=true)
+![Okapi mascot](https://github.com/MonadicSystems/okapi/blob/main/okapi_1_50.png?raw=true)
 
 ## Introduction
 
