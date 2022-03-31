@@ -12,7 +12,7 @@ import Data.Text
 import GHC.Generics (Generic)
 import Okapi
 
-main :: IO ()
+-- main :: IO ()
 main = runOkapi id 3000 calcNoDo
 
 calcNoDo = get >> seg "calc" >> choice [addOp, subOp, mulOp, divOp]

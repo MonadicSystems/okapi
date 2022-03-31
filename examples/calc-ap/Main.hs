@@ -13,7 +13,6 @@ import Data.Text
 import GHC.Generics (Generic)
 import Okapi
 
-main :: IO ()
 main = runOkapi id 3000 calcAp
 
 calcAp = get *> seg "calc" *> choice [addOp, subOp, mulOp, divOp]

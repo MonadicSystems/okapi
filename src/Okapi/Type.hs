@@ -9,6 +9,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 module Okapi.Type where
 
@@ -21,6 +22,7 @@ import Control.Monad.Morph
 import Control.Monad.RWS (MonadReader (local), join)
 import Control.Monad.Reader.Class (MonadReader (ask, reader))
 import Control.Monad.State.Class (MonadState (..))
+import Control.Monad.Log
 import qualified Control.Monad.State.Class as State
 import Control.Monad.Trans.Except (ExceptT (..), runExceptT, throwE)
 import Control.Monad.Trans.State (StateT (..))
@@ -47,6 +49,7 @@ import qualified Network.Wai.Handler.WarpTLS as Warp
 import Text.Read (readMaybe)
 import Web.FormUrlEncoded (FromForm (fromForm), urlDecodeAsForm)
 import qualified Web.HttpApiData as HTTP
+import Formatting
 
 {-
     Continue with next handler
@@ -228,4 +231,15 @@ type MonadOkapi m =
     MonadIO m,
     MonadError Error m,
     MonadState Request m
+  )
+
+newtype PathT r r' m a = PathT { runPathT :: PureLoggingT (Format r r') m a }
+
+type MonadPath r r' m =
+  ( Functor m
+  , Applicative m
+  , Alternative m
+  , Monad m
+  , MonadPlus m
+  , MonadLog (Format r r') m
   )

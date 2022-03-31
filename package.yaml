@@ -34,6 +34,9 @@ dependencies:
 - warp-tls
 - text
 - transformers
+- formatting
+- logging-effect
+
 
 library:
   source-dirs: src

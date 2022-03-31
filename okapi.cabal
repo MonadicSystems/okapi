@@ -37,8 +37,10 @@ library
     , base >=4.7 && <5
     , base64
     , bytestring
+    , formatting
     , http-api-data
     , http-types
+    , logging-effect
     , mmorph
     , mtl
     , random
@@ -61,8 +63,10 @@ executable calc-ap
     , base >=4.7 && <5
     , base64
     , bytestring
+    , formatting
     , http-api-data
     , http-types
+    , logging-effect
     , mmorph
     , mtl
     , okapi
@@ -87,8 +91,10 @@ executable calc-exe
     , base >=4.7 && <5
     , base64
     , bytestring
+    , formatting
     , http-api-data
     , http-types
+    , logging-effect
     , mmorph
     , mtl
     , okapi
@@ -112,8 +118,10 @@ executable calc-no-do-exe
     , base >=4.7 && <5
     , base64
     , bytestring
+    , formatting
     , http-api-data
     , http-types
+    , logging-effect
     , mmorph
     , mtl
     , okapi
@@ -147,11 +155,13 @@ executable realworld-exe
     , base64
     , bytestring
     , containers
+    , formatting
     , hasql
     , hasql-th
     , http-api-data
     , http-types
     , jwt
+    , logging-effect
     , mmorph
     , mtl
     , okapi
@@ -182,8 +192,10 @@ executable servant-exe
     , base >=4.7 && <5
     , base64
     , bytestring
+    , formatting
     , http-api-data
     , http-types
+    , logging-effect
     , lucid
     , mmorph
     , mtl
@@ -212,8 +224,10 @@ executable todo-exe
     , base >=4.7 && <5
     , base64
     , bytestring
+    , formatting
     , http-api-data
     , http-types
+    , logging-effect
     , mmorph
     , mtl
     , okapi
@@ -238,8 +252,10 @@ test-suite okapi-test
     , base >=4.7 && <5
     , base64
     , bytestring
+    , formatting
     , http-api-data
     , http-types
+    , logging-effect
     , mmorph
     , mtl
     , okapi

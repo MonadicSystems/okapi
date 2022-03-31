@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
@@ -15,27 +16,27 @@ import Okapi
 main :: IO ()
 main = runOkapi id 3000 calc
 
-type Okapi a = OkapiT IO a
+-- type Okapi a = OkapiT IO a
 
-calc :: Okapi Response
+calc :: MonadOkapi m => m Response
 calc = do
   get
   seg "calc"
   addOp <|> subOp <|> mulOp <|> divOp
 
-addOp :: Okapi Response
+addOp :: MonadOkapi m => m Response
 addOp = do
   seg "add"
   (x, y) <- getArgs
   respondJSON [] $ x + y
 
-subOp :: Okapi Response
+subOp :: MonadOkapi m => m Response
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
   respondJSON [] $ x - y
 
-mulOp :: Okapi Response
+mulOp :: MonadOkapi m => m Response
 mulOp = do
   seg "mul"
   (x, y) <- getArgs
@@ -47,7 +48,7 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp :: Okapi Response
+divOp :: MonadOkapi m => m Response
 divOp = do
   seg "div"
   (x, y) <- getArgs
@@ -55,16 +56,16 @@ divOp = do
     then abort403 [] "Forbidden"
     else respondJSON [] $ DivResult {answer = x `div` y, remainder = x `mod` y}
 
-getArgs :: Okapi (Int, Int)
+getArgs :: MonadOkapi m => m (Int, Int)
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
-    getArgsFromPath :: Okapi (Int, Int)
+    getArgsFromPath :: MonadOkapi m => m (Int, Int)
     getArgsFromPath = do
       x <- segParamAs @Int
       y <- segParamAs @Int
       pure (x, y)
 
-    getArgsFromQueryParams :: Okapi (Int, Int)
+    getArgsFromQueryParams :: MonadOkapi m => m (Int, Int)
     getArgsFromQueryParams = do
       x <- queryParamAs @Int "x"
       y <- queryParamAs @Int "y"
