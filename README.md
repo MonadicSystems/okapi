@@ -1,6 +1,6 @@
 # Okapi
 
-A monadic parser for HTTP requests. Official docs [here](https://www.okapi.wiki/).
+A microframework based on monadic parsing. Official docs [here](https://www.okapi.wiki/).
 
 ## Introduction
 
