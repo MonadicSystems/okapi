@@ -11,7 +11,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 
-module Okapi.Type where
+module Okapi.Monad.Type where
 
 import Control.Applicative
 import Control.Monad
@@ -112,7 +112,13 @@ type Request =
     Wai.Request
   )
 
-type Response = Wai.Response
+-- type Response = Wai.Response
+
+data Response = Response
+  { responseStatus :: Int
+  , responseHeaders :: [HTTP.Header]
+  , responseBody :: LBS.ByteString
+  }
 
 data Error = Skip | Abort Response
 
@@ -124,25 +130,25 @@ data Error = Skip | Abort Response
 -- instance Monoid Error where
 --   mempty = Skip
 
-newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT Error (StateT Request m) a}
+newtype ServerT m a = ServerT {unOkapiT :: ExceptT Error (StateT Request m) a}
   deriving newtype
     ( MonadError Error,
       MonadState Request
     )
 
-instance Functor m => Functor (OkapiT m) where
-  fmap :: (a -> b) -> OkapiT m a -> OkapiT m b
+instance Functor m => Functor (ServerT m) where
+  fmap :: (a -> b) -> ServerT m a -> ServerT m b
   fmap f okapiT =
-    OkapiT . ExceptT . StateT $
+    ServerT . ExceptT . StateT $
       ( fmap (\ ~(a, s') -> (f <$> a, s'))
           . runStateT (runExceptT $ unOkapiT okapiT)
       )
   {-# INLINE fmap #-}
 
-instance Monad m => Applicative (OkapiT m) where
-  pure x = OkapiT . ExceptT . StateT $ \s -> pure (Right x, s)
+instance Monad m => Applicative (ServerT m) where
+  pure x = ServerT . ExceptT . StateT $ \s -> pure (Right x, s)
   {-# INLINEABLE pure #-}
-  (OkapiT (ExceptT (StateT mf))) <*> (OkapiT (ExceptT (StateT mx))) = OkapiT . ExceptT . StateT $ \s -> do
+  (ServerT (ExceptT (StateT mf))) <*> (ServerT (ExceptT (StateT mx))) = ServerT . ExceptT . StateT $ \s -> do
     ~(eitherF, s') <- mf s
     case eitherF of
       Left error -> pure (Left error, s)
@@ -155,10 +161,10 @@ instance Monad m => Applicative (OkapiT m) where
   m *> k = m >>= \_ -> k
   {-# INLINE (*>) #-}
 
-instance Monad m => Alternative (OkapiT m) where
-  empty = OkapiT . ExceptT . StateT $ \s -> pure (Left Skip, s)
+instance Monad m => Alternative (ServerT m) where
+  empty = ServerT . ExceptT . StateT $ \s -> pure (Left Skip, s)
   {-# INLINE empty #-}
-  (OkapiT (ExceptT (StateT mx))) <|> (OkapiT (ExceptT (StateT my))) = OkapiT . ExceptT . StateT $ \s -> do
+  (ServerT (ExceptT (StateT mx))) <|> (ServerT (ExceptT (StateT my))) = ServerT . ExceptT . StateT $ \s -> do
     (eitherX, stateX) <- mx s
     case eitherX of
       Left Skip -> do
@@ -171,10 +177,10 @@ instance Monad m => Alternative (OkapiT m) where
       Right x -> pure (Right x, stateX)
   {-# INLINEABLE (<|>) #-}
 
-instance Monad m => Monad (OkapiT m) where
+instance Monad m => Monad (ServerT m) where
   return = pure
   {-# INLINEABLE return #-}
-  (OkapiT (ExceptT (StateT mx))) >>= f = OkapiT . ExceptT . StateT $ \s -> do
+  (ServerT (ExceptT (StateT mx))) >>= f = ServerT . ExceptT . StateT $ \s -> do
     ~(eitherX, s') <- mx s
     case eitherX of
       Left error -> pure (Left error, s)
@@ -185,10 +191,10 @@ instance Monad m => Monad (OkapiT m) where
           Right res -> pure (Right res, s'')
   {-# INLINEABLE (>>=) #-}
 
-instance Monad m => MonadPlus (OkapiT m) where
-  mzero = OkapiT . ExceptT . StateT $ \s -> pure (Left Skip, s)
+instance Monad m => MonadPlus (ServerT m) where
+  mzero = ServerT . ExceptT . StateT $ \s -> pure (Left Skip, s)
   {-# INLINE mzero #-}
-  (OkapiT (ExceptT (StateT mx))) `mplus` (OkapiT (ExceptT (StateT my))) = OkapiT . ExceptT . StateT $ \s -> do
+  (ServerT (ExceptT (StateT mx))) `mplus` (ServerT (ExceptT (StateT my))) = ServerT . ExceptT . StateT $ \s -> do
     (eitherX, stateX) <- mx s
     case eitherX of
       Left Skip -> do
@@ -201,28 +207,28 @@ instance Monad m => MonadPlus (OkapiT m) where
       Right x -> pure (Right x, stateX)
   {-# INLINEABLE mplus #-}
 
-instance MonadIO m => MonadIO (OkapiT m) where
+instance MonadIO m => MonadIO (ServerT m) where
   liftIO = lift . liftIO
 
-instance MonadReader r m => MonadReader r (OkapiT m) where
+instance MonadReader r m => MonadReader r (ServerT m) where
   ask = lift ask
   local = mapOkapiT . local
     where
-      mapOkapiT :: (m (Either Error a, Request) -> n (Either Error b, Request)) -> OkapiT m a -> OkapiT n b
-      mapOkapiT f okapiT = OkapiT . ExceptT . StateT $ f . runStateT (runExceptT $ unOkapiT okapiT)
+      mapOkapiT :: (m (Either Error a, Request) -> n (Either Error b, Request)) -> ServerT m a -> ServerT n b
+      mapOkapiT f okapiT = ServerT . ExceptT . StateT $ f . runStateT (runExceptT $ unOkapiT okapiT)
   reader = lift . reader
 
-instance MonadTrans OkapiT where
-  lift :: Monad m => m a -> OkapiT m a
-  lift action = OkapiT . ExceptT . StateT $ \s -> do
+instance MonadTrans ServerT where
+  lift :: Monad m => m a -> ServerT m a
+  lift action = ServerT . ExceptT . StateT $ \s -> do
     result <- action
     pure (Right result, s)
 
-instance MFunctor OkapiT where
-  hoist :: Monad m => (forall a. m a -> n a) -> OkapiT m b -> OkapiT n b
-  hoist nat okapiT = OkapiT . ExceptT . StateT $ (nat . runStateT (runExceptT $ unOkapiT okapiT))
+instance MFunctor ServerT where
+  hoist :: Monad m => (forall a. m a -> n a) -> ServerT m b -> ServerT n b
+  hoist nat okapiT = ServerT . ExceptT . StateT $ (nat . runStateT (runExceptT $ unOkapiT okapiT))
 
-type MonadOkapi m =
+type MonadServer m =
   ( Functor m,
     Applicative m,
     Alternative m,
@@ -233,13 +239,18 @@ type MonadOkapi m =
     MonadState Request m
   )
 
-newtype PathT r r' m a = PathT { runPathT :: PureLoggingT (Format r r') m a }
+-- newtype PathT r r' m a = PathT { runPathT :: PureLoggingT (Format r (Text -> r')) m a }
 
-type MonadPath r r' m =
-  ( Functor m
-  , Applicative m
-  , Alternative m
-  , Monad m
-  , MonadPlus m
-  , MonadLog (Format r r') m
-  )
+-- instance Semigroup (Format r (Text -> r')) where
+
+-- instance Monoid (Format r (r') where
+
+
+-- type MonadPath r r' m =
+--   ( Functor m
+--   , Applicative m
+--   , Alternative m
+--   , Monad m
+--   , MonadPlus m
+--   , MonadLog (Format r (Text -> r')) m
+--   )

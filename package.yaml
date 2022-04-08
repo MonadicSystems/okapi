@@ -28,6 +28,7 @@ dependencies:
 - http-types
 - mmorph
 - mtl
+- openapi3
 - random
 - wai
 - warp
@@ -42,9 +43,9 @@ library:
   source-dirs: src
 
 executables:
-  realworld-exe:
+  calc-pure-ap-exe:
     main:                Main.hs
-    source-dirs:         examples/realworld
+    source-dirs:         examples/calc-pure-ap
     ghc-options:
     - -threaded
     - -rtsopts
@@ -59,58 +60,75 @@ executables:
     - time
     - vector
     - profunctors
-  calc-exe:
-    main:                Main.hs
-    source-dirs:         examples/calc
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-  calc-ap:
-    main:                Main.hs
-    source-dirs:         examples/calc-ap
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-    - parser-combinators
-  calc-no-do-exe:
-    main:                Main.hs
-    source-dirs:         examples/calc-no-do
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-    - parser-combinators
-  todo-exe:
-    main:                Main.hs
-    source-dirs:         examples/todo
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-  servant-exe:
-    main:                Main.hs
-    source-dirs:         examples/servant
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-    - lucid
-    - parser-combinators
-    - servant
-    - servant-lucid
-    - servant-server
+# realworld-exe:
+#   main:                Main.hs
+#   source-dirs:         examples/realworld
+#   ghc-options:
+#   - -threaded
+#   - -rtsopts
+#   - -with-rtsopts=-N
+#   dependencies:
+#   - okapi
+#   - containers
+#   - hasql
+#   - hasql-th
+#   - jwt
+#   - parser-combinators
+#   - time
+#   - vector
+#   - profunctors
+#   calc-exe:
+#     main:                Main.hs
+#     source-dirs:         examples/calc
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - okapi
+#   calc-ap:
+#     main:                Main.hs
+#     source-dirs:         examples/calc-ap
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - okapi
+#     - parser-combinators
+#   calc-no-do-exe:
+#     main:                Main.hs
+#     source-dirs:         examples/calc-no-do
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - okapi
+#     - parser-combinators
+#   todo-exe:
+#     main:                Main.hs
+#     source-dirs:         examples/todo
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - okapi
+#   servant-exe:
+#     main:                Main.hs
+#     source-dirs:         examples/servant
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - okapi
+#     - lucid
+#     - parser-combinators
+#     - servant
+#     - servant-lucid
+#     - servant-server
 
 tests:
   okapi-test:

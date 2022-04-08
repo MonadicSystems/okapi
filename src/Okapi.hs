@@ -1,7 +1,8 @@
 module Okapi
-    ( module Okapi.Function
-    , module Okapi.Type
+    ( module Okapi.Monad
+    , module Okapi.Applicative
     ) where
 
-import Okapi.Function
-import Okapi.Type
+import Okapi.Applicative
+import Okapi.Monad
+import Formatting

@@ -22,11 +22,11 @@ main = runOkapi id 3000 greet
 greet = do
   seg "greet"
   name <- segParam
-  respondPlainText [] $ "Hello " <> name <> "! I'm Okapi."
+  okPlainText [] $ "Hello " <> name <> "! I'm Okapi."
 ```
 
 Running this code will start a server on [localhost:3000](http://localhost:3000.org).
-If you go to [http://localhost:3000/greeting/Bob]() the server will respond with `Hello Bob! I'm Okapi.` in plain text format.
+If you go to [http://localhost:3000/greeting/Bob]() the server will response with `Hello Bob! I'm Okapi.` in plain text format.
 
 Okapi is a [monadic parser](https://www.cs.nott.ac.uk/~pszgmh/monparsing.pdf) for HTTP requests. This means it can be used with all `Applicative`, `Alternative`, and `Monad` typeclass methods, plus other Haskell idioms like [parser combinators](https://hackage.haskell.org/package/parser-combinators).
 
