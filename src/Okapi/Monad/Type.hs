@@ -120,6 +120,8 @@ data Response = Response
   , responseBody :: LBS.ByteString
   }
 
+data ResponseToken = ResponseToken [HTTP.Header] LBS.ByteString
+
 data Error = Skip | Abort Response
 
 -- instance Semigroup Error where

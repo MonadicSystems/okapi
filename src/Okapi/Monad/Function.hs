@@ -409,17 +409,17 @@ bodyForm = do
 
 -- RESPONSE FUNCTIONS
 
-okPlainText :: forall m. MonadServer m => [HTTP.Header] -> Text -> m Response
-okPlainText headers body = respond $ Response 200 ([("Content-Type", "text/plain")] <> headers) (encode body)
+mkOkPlainText :: forall m. MonadServer m => [HTTP.Header] -> Text -> m ResponseToken
+mkOkPlainText headers body = pure $ ResponseToken ([("Content-Type", "text/plain")] <> headers) (encode body)
 
-okJSON :: forall a m. (MonadServer m, ToJSON a) => [HTTP.Header] -> a -> m Response
-okJSON headers body = respond $ Response 200 ([("Content-Type", "application/json")] <> headers) (encode body)
+mkOkJSON :: forall a m. (MonadServer m, ToJSON a) => [HTTP.Header] -> a -> m ResponseToken
+mkOkJSON headers body = pure $ ResponseToken ([("Content-Type", "application/json")] <> headers) (encode body)
 
-okHTML :: forall m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m Response
-okHTML headers body = respond $ Response 200 ([("Content-Type", "text/html")] <> headers) body
+mkOkHTML :: forall m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m ResponseToken
+mkOkHTML headers body = pure $ ResponseToken ([("Content-Type", "text/html")] <> headers) body
 
-respond :: forall m. MonadServer m => Response -> m Response
-respond response = do
+respond :: forall m. MonadServer m => ResponseToken -> m Response
+respond (ResponseToken headers body) = do
   liftIO $ print "Attempting to response from Servo"
   request <- State.get
   logic request
@@ -432,53 +432,34 @@ respond response = do
       -- not $ isBodyParsed request = throwError Skip
       | otherwise = do
         liftIO $ print "Responded from servo, passing off to WAI"
-        pure response
-
-okPlainTextAp :: forall m. MonadServer m => [HTTP.Header] -> m Text -> m Response
-okPlainTextAp headers wrappedText = do
-  text <- wrappedText
-  okPlainText headers text
-
-okJSONAp :: forall a m. (ToJSON a, MonadServer m) => [HTTP.Header] -> m a -> m Response
-okJSONAp headers wrappedJSON = do
-  json <- wrappedJSON
-  okJSON headers json
-
-okHTMLAp :: forall m. MonadServer m => [HTTP.Header] -> m LBS.ByteString -> m Response
-okHTMLAp headers wrappedHTML = do
-  html <- wrappedHTML
-  okHTML headers html
-
--- okAp :: forall m. MonadServer m => m Wai.Response -> m Response
--- okAp wrappedWaiResponse = do
---   waiResponse <- wrappedWaiResponse
---   response waiResponse
-
--- respondJSONAp :: forall a m. (MonadServer m, ToJSON a) => [HTTP.Header] -> m a -> m Response
--- respondJSONAp headers wrappedValue = respondAp $ Wai.responseLBS HTTP.status200 ([("Content-Type", "application/json")] <> headers) . encode <$> wrappedValue
+        pure $ Response 200 headers body
 
 -- ERROR FUNCTIONS
 
 skip :: forall a m. MonadServer m => m a
 skip = throwError Skip
 
-abort :: forall a m. MonadServer m => Response -> m a
-abort = throwError . Abort
+error :: forall a m. MonadServer m => Error -> m a
+error abort@(Abort _) = throwError abort
+error _ = skip
 
-abort500 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
-abort500 headers = abort . Response 500 headers
+mkAbort :: forall a m. MonadServer m => Int -> [HTTP.Header] -> LBS.ByteString -> m Error
+mkAbort status headers body = pure $ Abort $ Response status headers body 
 
-abort401 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
-abort401 headers = abort . Response 401 headers
+-- abort500 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
+-- abort500 headers = abort . Response 500 headers
 
-abort403 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
-abort403 headers = abort . Response 403 headers
+-- abort401 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
+-- abort401 headers = abort . Response 401 headers
 
-abort404 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
-abort404 headers = abort . Response 404 headers
+-- abort403 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
+-- abort403 headers = abort . Response 403 headers
 
-abort422 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
-abort422 headers = abort . Response 422 headers
+-- abort404 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
+-- abort404 headers = abort . Response 404 headers
+
+-- abort422 :: forall a m. MonadServer m => [HTTP.Header] -> LBS.ByteString -> m a
+-- abort422 headers = abort . Response 422 headers
 
 -- | Execute the next parser even if the first one throws an Abort error
 (<!>) :: Monad m => ServerT m a -> ServerT m a -> ServerT m a

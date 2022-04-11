@@ -4,14 +4,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-
-
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings  #-}
-
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -24,6 +21,7 @@ import Control.Monad
 import Control.Monad.Except (MonadError (..))
 import qualified Control.Monad.Except as Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Identity (Identity)
 import Control.Monad.Log
 import Control.Monad.Morph
 import Control.Monad.RWS (MonadReader (local), join)
@@ -43,6 +41,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable
 import Data.List (delete, deleteBy)
 import Data.Maybe (isJust, listToMaybe)
+import Data.OpenApi hiding (Response)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Formatting
@@ -53,14 +52,12 @@ import Network.Wai.Handler.Warp (Settings)
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.Wai.Handler.WarpTLS (TLSSettings)
 import qualified Network.Wai.Handler.WarpTLS as Warp
+import Okapi.Monad.Function
+import Okapi.Monad.Type
 import Text.Read (readMaybe)
 import Web.FormUrlEncoded (FromForm (fromForm), urlDecodeAsForm)
 import Web.HttpApiData (FromHttpApiData)
 import qualified Web.HttpApiData as HTTP
-import Control.Monad.Identity (Identity)
-import Okapi.Monad.Type
-import Okapi.Monad.Function
-import Data.OpenApi hiding (Response)
 
 -- type Request =
 --   ( Bool, -- has the HTTP method been parsed yet?
@@ -130,6 +127,7 @@ method = undefined
 -}
 
 data Parser a where
+  -- PARSERS
   MethodP :: HTTP.Method -> Parser ()
   SegP :: Text -> Parser ()
   SegParamP :: forall a. Read a => Parser a
@@ -138,24 +136,30 @@ data Parser a where
   HeaderP :: HTTP.HeaderName -> Parser Text
   BodyJSONP :: forall a. FromJSON a => Parser a
   BodyFormP :: forall a. FromForm a => Parser a
-  RespondP :: Response -> Parser Response
-  RespondPlainTextP :: [HTTP.Header] -> Parser Text -> Parser Response
-  RespondHTMLP :: [HTTP.Header] -> Parser LBS.ByteString -> Parser Response
-  RespondJSONP :: forall a. ToJSON a => [HTTP.Header] -> Parser a -> Parser Response
-  SkipP :: Parser a
+  -- RESPONDERS
+  MkOkPlainTextP :: [HTTP.Header] -> Text -> Parser ResponseToken
+  MkOkHTMLP :: [HTTP.Header] -> LBS.ByteString -> Parser ResponseToken
+  MkOkJSONP :: forall a. ToJSON a => [HTTP.Header] -> a -> Parser ResponseToken
+  MkAbortP :: Int -> [HTTP.Header] -> LBS.ByteString -> Parser Error
+  ErrorP :: Error -> Parser a
+  RespondP :: ResponseToken -> Parser Response
+  -- METHODS
   PureP :: a -> Parser a
-  AppP :: Parser (a -> b) -> Parser a -> Parser b
+  ApP :: Parser (a -> b) -> Parser a -> Parser b
   ChoiceP :: Parser a -> Parser a -> Parser a
-  -- BindP :: Parser a -> (a -> Parser b) -> Parser b
-  -- genServer (BindP x f) = genServer x >>= f
+  BindP :: Parser a -> (a -> Parser b) -> Parser b
 
 instance Functor Parser where
-  fmap = AppP . PureP
+  fmap = ApP . PureP
 
 instance Applicative Parser where
   pure = PureP
-  (<*>) = AppP
+  (<*>) = ApP
 
 instance Alternative Parser where
-  empty = SkipP
+  empty = ErrorP Skip
   (<|>) = ChoiceP
+
+instance Monad Parser where
+  (>>=) = BindP
+  return = PureP

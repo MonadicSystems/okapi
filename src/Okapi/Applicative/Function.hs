@@ -1,6 +1,6 @@
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Okapi.Applicative.Function where
 
@@ -9,6 +9,7 @@ import Control.Monad
 import Control.Monad.Except (MonadError (..))
 import qualified Control.Monad.Except as Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Identity (Identity)
 import Control.Monad.Log
 import Control.Monad.Morph
 import Control.Monad.RWS (MonadReader (local), join)
@@ -28,6 +29,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable
 import Data.List (delete, deleteBy)
 import Data.Maybe (isJust, listToMaybe)
+import Data.OpenApi hiding (Response)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Formatting
@@ -38,15 +40,13 @@ import Network.Wai.Handler.Warp (Settings)
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.Wai.Handler.WarpTLS (TLSSettings)
 import qualified Network.Wai.Handler.WarpTLS as Warp
+import Okapi.Applicative.Type
+import Okapi.Monad.Function
+import Okapi.Monad.Type
 import Text.Read (readMaybe)
 import Web.FormUrlEncoded (FromForm (fromForm), urlDecodeAsForm)
 import Web.HttpApiData (FromHttpApiData)
 import qualified Web.HttpApiData as HTTP
-import Control.Monad.Identity (Identity)
-import Okapi.Monad.Type
-import Okapi.Monad.Function
-import Data.OpenApi hiding (Response)
-import Okapi.Applicative.Type
 
 methodP :: HTTP.Method -> Parser ()
 methodP = MethodP
@@ -75,35 +75,20 @@ bodyJSONP = BodyJSONP
 bodyFormP :: forall a. FromForm a => Parser a
 bodyFormP = BodyFormP
 
-skipP :: Parser a
-skipP = SkipP
+-- skipP :: Parser a
+-- skipP = SkipP
 
-respondP :: Response -> Parser Response
-respondP = RespondP
+mkAbortP :: Int -> [HTTP.Header] -> LBS.ByteString -> Parser Error
+mkAbortP = MkAbortP
 
--- abortP :: Response -> Parser a
--- abortP = AbortP
+mkOkJSONP :: forall a. ToJSON a => [HTTP.Header] -> a -> Parser ResponseToken
+mkOkJSONP = MkOkJSONP
 
--- okP :: Response -> Parser Response
--- okP = OkP
+mkOkHTMLP :: [HTTP.Header] -> LBS.ByteString -> Parser ResponseToken
+mkOkHTMLP = MkOkHTMLP
 
--- okJSONP :: forall a. ToJSON a => [HTTP.Header] -> Parser a -> Parser Response
--- okJSONP = OkJSONP
-
--- okHTMLP :: [HTTP.Header] -> Parser LBS.ByteString -> Parser Response
--- okHTMLP = OkHTMLP
-
--- okPlainTextP :: [HTTP.Header] -> Parser Text -> Parser Response
--- okPlainTextP = OkPlainTextP
-
-respondJSONP :: forall a. ToJSON a => [HTTP.Header] -> Parser a -> Parser Response
-respondJSONP = RespondJSONP
-
--- okHTMLP :: [HTTP.Header] -> LBS.ByteString -> Parser Response
--- okHTMLP headers = OkHTMLP headers . pure
-
--- okPlainTextP :: [HTTP.Header] -> Text -> Parser Response
--- okPlainTextP headers = OkPlainTextP headers . pure
+mkOkPlainTextP :: [HTTP.Header] -> Text -> Parser ResponseToken
+mkOkPlainTextP = MkOkPlainTextP
 
 optimize :: Parser Response -> Parser Response
 optimize = undefined
@@ -126,12 +111,13 @@ genServer (QueryFlagP name) = queryParamFlag name
 genServer (HeaderP headerName) = header headerName
 genServer BodyJSONP = bodyJSON
 genServer BodyFormP = bodyForm
-genServer SkipP = skip
-genServer (RespondP response) = undefined
-genServer (RespondPlainTextP headers text) = okPlainTextAp headers (genServer text)
-genServer (RespondHTMLP headers html) = okHTMLAp headers (genServer html)
-genServer (RespondJSONP headers json) = okJSONAp headers (genServer json)
+genServer (MkAbortP status headers body) = mkAbort status headers body
+genServer (MkOkPlainTextP headers text) = mkOkPlainText headers text
+genServer (MkOkHTMLP headers html) = mkOkHTML headers html
+genServer (MkOkJSONP headers json) = mkOkJSON headers json
+genServer (RespondP token) = respond token
+genServer (ErrorP error) = throwError error
 genServer (PureP v) = pure v
-genServer (AppP f x) = genServer f <*> genServer x
+genServer (ApP f x) = genServer f <*> genServer x
 genServer (ChoiceP f g) = genServer f <|> genServer g
--- genServer (BindP x f) = genServer x >>= f
+genServer (BindP x f) = genServer (x >>= f)
