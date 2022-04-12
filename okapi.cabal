@@ -26,12 +26,11 @@ source-repository head
 library
   exposed-modules:
       Okapi
-      Okapi.Applicative
-      Okapi.Applicative.Function
-      Okapi.Applicative.Type
-      Okapi.Monad
-      Okapi.Monad.Function
-      Okapi.Monad.Type
+      Okapi.Grammar
+      Okapi.Interpreter.Layout
+      Okapi.Interpreter.OpenAPI
+      Okapi.Interpreter.Server
+      Okapi.Type
   other-modules:
       Paths_okapi
   hs-source-dirs:
@@ -56,12 +55,48 @@ library
     , warp-tls
   default-language: Haskell2010
 
-executable calc-pure-ap-exe
+executable calc-exe
   main-is: Main.hs
   other-modules:
       Paths_okapi
   hs-source-dirs:
-      examples/calc-pure-ap
+      examples/calc
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , base64
+    , bytestring
+    , formatting
+    , http-api-data
+    , http-types
+    , logging-effect
+    , mmorph
+    , mtl
+    , okapi
+    , openapi3
+    , random
+    , text
+    , transformers
+    , wai
+    , warp
+    , warp-tls
+  default-language: Haskell2010
+
+executable realworld-exe
+  main-is: Main.hs
+  other-modules:
+      Conduit.Auth
+      Conduit.Database
+      Conduit.Database.Query
+      Conduit.Database.Setup
+      Conduit.Server
+      Conduit.Type
+      Conduit.Type.Request
+      Conduit.Type.Response
+      Paths_okapi
+  hs-source-dirs:
+      examples/realworld
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson

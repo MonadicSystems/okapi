@@ -1,8 +1,8 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
@@ -10,37 +10,40 @@ import Control.Applicative ((<|>))
 import Data.Aeson (ToJSON)
 import Data.Text
 import GHC.Generics (Generic)
-import Okapi
-
+import Okapi.Grammar
+import Okapi.Interpreter.Server (genServer, runOkapi)
+import Okapi.Type
+import Prelude hiding (error)
 
 main :: IO ()
-main = runOkapi id 3000 calc
+main = runOkapi id 3000 (genServer calc)
 
--- type Okapi a = OkapiT IO a
-
-calc :: MonadOkapi m => m Response
+calc :: Okapi m Response
 calc = do
   get
   seg "calc"
   addOp <|> subOp <|> mulOp <|> divOp
 
-addOp :: MonadOkapi m => m Response
+addOp :: Okapi m Response
 addOp = do
   seg "add"
   (x, y) <- getArgs
-  respondJSON [] $ x + y
+  response <- mayRespondJSON 200 []
+  respond $ response $ x + y
 
-subOp :: MonadOkapi m => m Response
+subOp :: Okapi m Response
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
-  respondJSON [] $ x - y
+  response <- mayRespondJSON 200 []
+  respond $ response $ x - y
 
-mulOp :: MonadOkapi m => m Response
+mulOp :: Okapi m Response
 mulOp = do
   seg "mul"
   (x, y) <- getArgs
-  respondJSON [] $ x * y
+  response <- mayRespondJSON 200 [] 
+  respond $ response $ x * y
 
 data DivResult = DivResult
   { answer :: Int,
@@ -48,25 +51,27 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp :: MonadOkapi m => m Response
+divOp :: Okapi m Response
 divOp = do
   seg "div"
   (x, y) <- getArgs
+  err <- mayThrow 403 []
+  ok <- mayRespondJSON 200 []
   if y == 0
-    then abort403 [] "Forbidden"
-    else respondJSON [] $ DivResult {answer = x `div` y, remainder = x `mod` y}
+    then throw $ err "Forbidden"
+    else respond $ ok $ DivResult {answer = x `div` y, remainder = x `mod` y}
 
-getArgs :: MonadOkapi m => m (Int, Int)
+getArgs :: Okapi m (Int, Int)
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
-    getArgsFromPath :: MonadOkapi m => m (Int, Int)
+    getArgsFromPath :: Okapi m (Int, Int)
     getArgsFromPath = do
-      x <- segParamAs @Int
-      y <- segParamAs @Int
+      x <- segParam @Int
+      y <- segParam @Int
       pure (x, y)
 
-    getArgsFromQueryParams :: MonadOkapi m => m (Int, Int)
+    getArgsFromQueryParams :: Okapi m (Int, Int)
     getArgsFromQueryParams = do
-      x <- queryParamAs @Int "x"
-      y <- queryParamAs @Int "y"
+      x <- queryParam @Int "x"
+      y <- queryParam @Int "y"
       pure (x, y)

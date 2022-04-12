@@ -10,15 +10,15 @@ import Conduit.Server
 import Conduit.Type
 import Control.Monad.Reader (runReaderT)
 import qualified Hasql.Connection as Connection
-import Okapi
 import System.Random
 import qualified Data.Text as Text
+import Okapi.Interpreter.Server (runOkapi, genServer)
 
 main :: IO ()
 main = do
   config <- getConfig
   setupDB $ configDBConnection config
-  runOkapi (hoistHandler config) 3000 conduit
+  runOkapi (hoistHandler config) 3000 (genServer conduit)
 
 hoistHandler :: Config -> Handler a -> IO a
 hoistHandler config app = runReaderT (runHandler app) config
