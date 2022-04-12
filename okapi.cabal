@@ -39,6 +39,7 @@ library
     , bytestring
     , http-api-data
     , http-types
+    , lucid
     , mmorph
     , mtl
     , random
@@ -64,6 +65,7 @@ executable calc-exe
     , bytestring
     , http-api-data
     , http-types
+    , lucid
     , mmorph
     , mtl
     , okapi
@@ -90,6 +92,7 @@ executable calc-no-do-exe
     , bytestring
     , http-api-data
     , http-types
+    , lucid
     , mmorph
     , mtl
     , okapi
@@ -129,6 +132,7 @@ executable realworld-exe
     , http-api-data
     , http-types
     , jwt
+    , lucid
     , mmorph
     , mtl
     , okapi
@@ -193,6 +197,7 @@ executable todo-exe
     , bytestring
     , http-api-data
     , http-types
+    , lucid
     , mmorph
     , mtl
     , okapi
@@ -220,6 +225,7 @@ test-suite okapi-test
     , bytestring
     , http-api-data
     , http-types
+    , lucid
     , mmorph
     , mtl
     , okapi

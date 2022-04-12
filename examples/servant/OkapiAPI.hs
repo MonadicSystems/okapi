@@ -75,6 +75,3 @@ getArgs = getArgsFromPath <|> getArgsFromQueryParams
       x <- queryParam @Int "x"
       y <- queryParam @Int "y"
       pure (x, y)
-
-okLucid :: ToHtml a => [Header] -> a -> Okapi Response
-okLucid headers = okHTML headers . renderBS . toHtml

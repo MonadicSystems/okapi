@@ -26,6 +26,7 @@ dependencies:
 - bytestring
 - http-api-data
 - http-types
+- lucid
 - mmorph
 - mtl
 - random

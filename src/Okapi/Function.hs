@@ -45,6 +45,7 @@ module Okapi.Function
     okPlainText,
     okJSON,
     okHTML,
+    okLucid,
     -- ERROR FUNCTIONS
     skip,
     abort,
@@ -79,6 +80,7 @@ import qualified Data.Maybe as Maybe
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified GHC.Natural as Natural
+import qualified Lucid
 import qualified Network.HTTP.Types as HTTP
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
@@ -372,6 +374,9 @@ okJSON headers = respond 200 ([("Content-Type", "application/json")] <> headers)
 
 okHTML :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Response
 okHTML headers = respond 200 ([("Content-Type", "text/html")] <> headers)
+
+okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Response
+okLucid headers = okHTML headers . Lucid.renderBS . Lucid.toHtml
 
 respond :: forall m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m Response
 respond status headers body = do
