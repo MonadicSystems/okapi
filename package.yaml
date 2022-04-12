@@ -34,6 +34,7 @@ dependencies:
 - warp-tls
 - text
 - transformers
+- vault
 
 library:
   source-dirs: src
@@ -65,16 +66,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - okapi
-  calc-ap:
-    main:                Main.hs
-    source-dirs:         examples/calc-ap
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-    - parser-combinators
   calc-no-do-exe:
     main:                Main.hs
     source-dirs:         examples/calc-no-do

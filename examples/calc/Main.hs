@@ -27,19 +27,19 @@ addOp :: Okapi Response
 addOp = do
   seg "add"
   (x, y) <- getArgs
-  respondJSON [] $ x + y
+  okJSON [] $ x + y
 
 subOp :: Okapi Response
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
-  respondJSON [] $ x - y
+  okJSON [] $ x - y
 
 mulOp :: Okapi Response
 mulOp = do
   seg "mul"
   (x, y) <- getArgs
-  respondJSON [] $ x * y
+  okJSON [] $ x * y
 
 data DivResult = DivResult
   { answer :: Int,
@@ -53,19 +53,19 @@ divOp = do
   (x, y) <- getArgs
   if y == 0
     then abort403 [] "Forbidden"
-    else respondJSON [] $ DivResult {answer = x `div` y, remainder = x `mod` y}
+    else okJSON [] $ DivResult {answer = x `div` y, remainder = x `mod` y}
 
 getArgs :: Okapi (Int, Int)
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
     getArgsFromPath :: Okapi (Int, Int)
     getArgsFromPath = do
-      x <- segParamAs @Int
-      y <- segParamAs @Int
+      x <- segParam @Int
+      y <- segParam @Int
       pure (x, y)
 
     getArgsFromQueryParams :: Okapi (Int, Int)
     getArgsFromQueryParams = do
-      x <- queryParamAs @Int "x"
-      y <- queryParamAs @Int "y"
+      x <- queryParam @Int "x"
+      y <- queryParam @Int "y"
       pure (x, y)

@@ -12,134 +12,67 @@
 
 module Okapi.Type where
 
-import Control.Applicative
-import Control.Monad
-import Control.Monad.Except (MonadError (..))
+import qualified Control.Applicative as Applicative
+import qualified Control.Monad as Monad
 import qualified Control.Monad.Except as Except
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Morph
-import Control.Monad.RWS (MonadReader (local), join)
-import Control.Monad.Reader.Class (MonadReader (ask, reader))
-import Control.Monad.State.Class (MonadState (..))
+import qualified Control.Monad.IO.Class as IO
+import qualified Control.Monad.Morph as Morph
+import qualified Control.Monad.Reader.Class as Reader
 import qualified Control.Monad.State.Class as State
-import Control.Monad.Trans.Except (ExceptT (..), runExceptT, throwE)
-import Control.Monad.Trans.State (StateT (..))
-import Data.Aeson (FromJSON, ToJSON, decode, encode)
-import Data.Aeson.Encoding (value)
-import Data.Bifunctor (Bifunctor (bimap))
-import Data.ByteString (ByteString)
-import Data.ByteString.Base64 (decodeBase64)
-import Data.ByteString.Char8 (pack)
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as LBS
-import Data.Foldable
-import Data.List (delete, deleteBy)
-import Data.Maybe (isJust, listToMaybe)
-import Data.Text (Text, unpack)
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import Network.HTTP.Types (status401)
+import qualified Control.Monad.Trans.Except as ExceptT
+import qualified Control.Monad.Trans.State as StateT
+import qualified Data.ByteString.Lazy as LazyByteString
+import qualified Data.Text as Text
+import qualified Data.Vault.Lazy as Vault
+import qualified GHC.Natural as Natural
 import qualified Network.HTTP.Types as HTTP
-import qualified Network.Wai as Wai
-import Network.Wai.Handler.Warp (Settings)
-import qualified Network.Wai.Handler.Warp as Warp
-import Network.Wai.Handler.WarpTLS (TLSSettings)
-import qualified Network.Wai.Handler.WarpTLS as Warp
-import Text.Read (readMaybe)
-import Web.FormUrlEncoded (FromForm (fromForm), urlDecodeAsForm)
-import qualified Web.HttpApiData as HTTP
 
-{-
-    Continue with next handler
+type Path = [Text.Text]
 
-        To go from Handler to handler, just sequence handlers in a do block like so:
+type Headers = [HTTP.Header]
 
-        api = do
-            post
-            seg "api"
-            login <|> register
-            doSomeMore
+type QueryItem = (Text.Text, Maybe Text.Text)
 
-    There will be two failure modes:
+type Query = [QueryItem]
 
-    Return Early
+data Request = Request
+  { requestMethod :: HTTP.Method,
+    requestPath :: Path,
+    requestQuery :: Query,
+    requestBody :: IO LazyByteString.ByteString,
+    requestHeaders :: Headers,
+    requestVault :: Vault.Vault,
+    requestMethodParsed :: Bool,
+    requestBodyParsed :: Bool
+  }
 
-        This returns some error response immediately.
-
-        It doesn't continue the sequence in the do block,
-        and doesn't continue the sequence in the choice blocks either.
-
-        It completely halts Okapi and forces to return a chosen response.
-        For example, given the following sequence:
-
-        api = do
-            post
-            seg "users"
-            login <|> register
-            doSomeMore
-
-        If login returns a Early Return error register won't be tried and doSomeMore won't be tried either.
-        Parsers containing this parser won't be tried either. For example:
-
-        outerApi = api <|> someOtherApi
-
-        If login in api fails with a return early error,
-        register isn't tried and doSomeMore isn't tried,
-        so basically the whole api parser fails.
-
-        If the inner parser returns an early return error, than so does the parser wrapping it.
-        So api would also return early and cause outerApi to return early without someOtherApi
-        being tried.
-
-        Basically, an early return error bubbles all the way to the top without stoping and returns a response.
-
-    Skip
-
-        This error type causes the current parser to fail,
-        but if used in a group of choices the next one will be tried.
-
-        If it bubbles up to a parser used in a choice block, other choices will be tried.
-
-        Basically, this error type doesn't bubble up all the way to the top
-        unless all possible branches fail.
--}
-
-type Request =
-  ( Bool, -- has the HTTP method been parsed yet?
-    Bool, -- has body been parsed yet? Needed this because of possibilty of large bodies and streaming bodies
-    Wai.Request
-  )
-
-type Response = Wai.Response
+data Response = Response
+  { responseStatus :: Natural.Natural,
+    responseHeaders :: Headers,
+    responseBody :: LazyByteString.ByteString
+  }
 
 data Error = Skip | Abort Response
 
--- instance Semigroup Error where
---   Skip <> someError = someError
---   someError <> Skip = someError
---   abort1@(Abort _) <> abort2@(Abort _) = abort1
-
--- instance Monoid Error where
---   mempty = Skip
-
-newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT Error (StateT Request m) a}
+newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT.ExceptT Error (StateT.StateT Request m) a}
   deriving newtype
-    ( MonadError Error,
-      MonadState Request
+    ( Except.MonadError Error,
+      State.MonadState Request
     )
 
 instance Functor m => Functor (OkapiT m) where
   fmap :: (a -> b) -> OkapiT m a -> OkapiT m b
   fmap f okapiT =
-    OkapiT . ExceptT . StateT $
+    OkapiT . ExceptT.ExceptT . StateT.StateT $
       ( fmap (\ ~(a, s') -> (f <$> a, s'))
-          . runStateT (runExceptT $ unOkapiT okapiT)
+          . StateT.runStateT (ExceptT.runExceptT $ unOkapiT okapiT)
       )
   {-# INLINE fmap #-}
 
 instance Monad m => Applicative (OkapiT m) where
-  pure x = OkapiT . ExceptT . StateT $ \s -> pure (Right x, s)
+  pure x = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> pure (Right x, s)
   {-# INLINEABLE pure #-}
-  (OkapiT (ExceptT (StateT mf))) <*> (OkapiT (ExceptT (StateT mx))) = OkapiT . ExceptT . StateT $ \s -> do
+  (OkapiT (ExceptT.ExceptT (StateT.StateT mf))) <*> (OkapiT (ExceptT.ExceptT (StateT.StateT mx))) = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
     ~(eitherF, s') <- mf s
     case eitherF of
       Left error -> pure (Left error, s)
@@ -149,13 +82,13 @@ instance Monad m => Applicative (OkapiT m) where
           Left error' -> pure (Left error', s')
           Right x -> pure (Right $ f x, s'')
   {-# INLINEABLE (<*>) #-}
-  m *> k = m >>= \_ -> k
+  m *> k = m >> k
   {-# INLINE (*>) #-}
 
-instance Monad m => Alternative (OkapiT m) where
-  empty = OkapiT . ExceptT . StateT $ \s -> pure (Left Skip, s)
+instance Monad m => Applicative.Alternative (OkapiT m) where
+  empty = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> pure (Left Skip, s)
   {-# INLINE empty #-}
-  (OkapiT (ExceptT (StateT mx))) <|> (OkapiT (ExceptT (StateT my))) = OkapiT . ExceptT . StateT $ \s -> do
+  (OkapiT (ExceptT.ExceptT (StateT.StateT mx))) <|> (OkapiT (ExceptT.ExceptT (StateT.StateT my))) = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
     (eitherX, stateX) <- mx s
     case eitherX of
       Left Skip -> do
@@ -171,21 +104,21 @@ instance Monad m => Alternative (OkapiT m) where
 instance Monad m => Monad (OkapiT m) where
   return = pure
   {-# INLINEABLE return #-}
-  (OkapiT (ExceptT (StateT mx))) >>= f = OkapiT . ExceptT . StateT $ \s -> do
+  (OkapiT (ExceptT.ExceptT (StateT.StateT mx))) >>= f = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
     ~(eitherX, s') <- mx s
     case eitherX of
       Left error -> pure (Left error, s)
       Right x -> do
-        ~(eitherResult, s'') <- runStateT (runExceptT $ unOkapiT $ f x) s'
+        ~(eitherResult, s'') <- StateT.runStateT (ExceptT.runExceptT $ unOkapiT $ f x) s'
         case eitherResult of
           Left error' -> pure (Left error', s')
           Right res -> pure (Right res, s'')
   {-# INLINEABLE (>>=) #-}
 
-instance Monad m => MonadPlus (OkapiT m) where
-  mzero = OkapiT . ExceptT . StateT $ \s -> pure (Left Skip, s)
+instance Monad m => Monad.MonadPlus (OkapiT m) where
+  mzero = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> pure (Left Skip, s)
   {-# INLINE mzero #-}
-  (OkapiT (ExceptT (StateT mx))) `mplus` (OkapiT (ExceptT (StateT my))) = OkapiT . ExceptT . StateT $ \s -> do
+  (OkapiT (ExceptT.ExceptT (StateT.StateT mx))) `mplus` (OkapiT (ExceptT.ExceptT (StateT.StateT my))) = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
     (eitherX, stateX) <- mx s
     case eitherX of
       Left Skip -> do
@@ -198,34 +131,34 @@ instance Monad m => MonadPlus (OkapiT m) where
       Right x -> pure (Right x, stateX)
   {-# INLINEABLE mplus #-}
 
-instance MonadIO m => MonadIO (OkapiT m) where
-  liftIO = lift . liftIO
+instance IO.MonadIO m => IO.MonadIO (OkapiT m) where
+  liftIO = Morph.lift . IO.liftIO
 
-instance MonadReader r m => MonadReader r (OkapiT m) where
-  ask = lift ask
-  local = mapOkapiT . local
+instance Reader.MonadReader r m => Reader.MonadReader r (OkapiT m) where
+  ask = Morph.lift Reader.ask
+  local = mapOkapiT . Reader.local
     where
       mapOkapiT :: (m (Either Error a, Request) -> n (Either Error b, Request)) -> OkapiT m a -> OkapiT n b
-      mapOkapiT f okapiT = OkapiT . ExceptT . StateT $ f . runStateT (runExceptT $ unOkapiT okapiT)
-  reader = lift . reader
+      mapOkapiT f okapiT = OkapiT . ExceptT.ExceptT . StateT.StateT $ f . StateT.runStateT (ExceptT.runExceptT $ unOkapiT okapiT)
+  reader = Morph.lift . Reader.reader
 
-instance MonadTrans OkapiT where
+instance Morph.MonadTrans OkapiT where
   lift :: Monad m => m a -> OkapiT m a
-  lift action = OkapiT . ExceptT . StateT $ \s -> do
+  lift action = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
     result <- action
     pure (Right result, s)
 
-instance MFunctor OkapiT where
+instance Morph.MFunctor OkapiT where
   hoist :: Monad m => (forall a. m a -> n a) -> OkapiT m b -> OkapiT n b
-  hoist nat okapiT = OkapiT . ExceptT . StateT $ (nat . runStateT (runExceptT $ unOkapiT okapiT))
+  hoist nat okapiT = OkapiT . ExceptT.ExceptT . StateT.StateT $ (nat . StateT.runStateT (ExceptT.runExceptT $ unOkapiT okapiT))
 
 type MonadOkapi m =
   ( Functor m,
     Applicative m,
-    Alternative m,
+    Applicative.Alternative m,
     Monad m,
-    MonadPlus m,
-    MonadIO m,
-    MonadError Error m,
-    MonadState Request m
+    Monad.MonadPlus m,
+    IO.MonadIO m,
+    Except.MonadError Error m,
+    State.MonadState Request m
   )

@@ -21,7 +21,7 @@ okapiAPI = do
   get
   seg "okapi"
   _ <- optional $ seg "" -- Trailing slash...This is needed for now but we can change it so it's automatically handled
-  respondLucid [] (Greeting "okapi") <|> calc
+  okLucid [] (Greeting "okapi") <|> calc
 
 calc :: Okapi Response
 calc = do
@@ -32,28 +32,28 @@ addOp :: Okapi Response
 addOp = do
   seg "add"
   (x, y) <- getArgs
-  respondLucid [] $ AddResult x y $ x + y
+  okLucid [] $ AddResult x y $ x + y
 
 subOp :: Okapi Response
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
-  respondLucid [] $ SubResult x y $ x - y
+  okLucid [] $ SubResult x y $ x - y
 
 mulOp :: Okapi Response
 mulOp = do
   seg "mul"
   (x, y) <- getArgs
-  respondLucid [] $ MulResult x y $ x * y
+  okLucid [] $ MulResult x y $ x * y
 
 divOp :: Okapi Response
 divOp = do
   seg "div"
   (x, y) <- getArgs
   if y == 0
-    then respondLucid [] DivByZero
+    then okLucid [] DivByZero
     else
-      respondLucid [] $
+      okLucid [] $
         DivResult
           { dividend = x,
             divisor = y,
@@ -66,15 +66,15 @@ getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
     getArgsFromPath :: Okapi (Int, Int)
     getArgsFromPath = do
-      x <- segParamAs @Int
-      y <- segParamAs @Int
+      x <- segParam @Int
+      y <- segParam @Int
       pure (x, y)
 
     getArgsFromQueryParams :: Okapi (Int, Int)
     getArgsFromQueryParams = do
-      x <- queryParamAs @Int "x"
-      y <- queryParamAs @Int "y"
+      x <- queryParam @Int "x"
+      y <- queryParam @Int "y"
       pure (x, y)
 
-respondLucid :: ToHtml a => [Header] -> a -> Okapi Response
-respondLucid headers = respondHTML headers . renderBS . toHtml
+okLucid :: ToHtml a => [Header] -> a -> Okapi Response
+okLucid headers = okHTML headers . renderBS . toHtml

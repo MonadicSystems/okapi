@@ -17,11 +17,11 @@ main = runOkapi id 3000 calcNoDo
 
 calcNoDo = get >> seg "calc" >> choice [addOp, subOp, mulOp, divOp]
 
-addOp = seg "add" >> (getArgs >>= (\(x, y) -> respondJSON [] $ x + y))
+addOp = seg "add" >> (getArgs >>= (\(x, y) -> okJSON [] $ x + y))
 
-subOp = (seg "sub" <|> seg "minus") >> (getArgs >>= (\(x, y) -> respondJSON [] $ x - y))
+subOp = (seg "sub" <|> seg "minus") >> (getArgs >>= (\(x, y) -> okJSON [] $ x - y))
 
-mulOp = seg "mul" >> (getArgs >>= (\(x, y) -> respondJSON [] $ x * y))
+mulOp = seg "mul" >> (getArgs >>= (\(x, y) -> okJSON [] $ x * y))
 
 data DivResult = DivResult
   { answer :: Int,
@@ -29,9 +29,9 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp = seg "div" >> (getArgs >>= (\(x, y) -> if y == 0 then abort403 [] "Forbidden" else respondJSON [] $ DivResult (x `div` y) (x `mod` y)))
+divOp = seg "div" >> (getArgs >>= (\(x, y) -> if y == 0 then abort403 [] "Forbidden" else okJSON [] $ DivResult (x `div` y) (x `mod` y)))
 
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
-    getArgsFromPath = segParamAs @Int >>= (\x -> segParamAs @Int >>= (\y -> pure (x, y)))
-    getArgsFromQueryParams = queryParamAs @Int "x" >>= (\x -> queryParamAs @Int "y" >>= (\y -> pure (x, y)))
+    getArgsFromPath = segParam @Int >>= (\x -> segParam @Int >>= (\y -> pure (x, y)))
+    getArgsFromQueryParams = queryParam @Int "x" >>= (\x -> queryParam @Int "y" >>= (\y -> pure (x, y)))

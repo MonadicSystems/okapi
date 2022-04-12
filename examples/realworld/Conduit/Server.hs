@@ -109,26 +109,26 @@ articles = do
 
 global = do
   mbUserID <- optional authorize
-  articlesQueryTag <- optional $ queryParam "tag"
-  articlesQueryAuthor <- optional $ queryParam "author"
-  articlesQueryFavorited <- optional $ queryParam "favorited"
-  articlesQueryLimit <- option 20 $ queryParamAs @Int32 "limit"
-  articlesQueryOffset <- option 0 $ queryParamAs @Int32 "offset"
+  articlesQueryTag <- optional $ queryParam @Text "tag"
+  articlesQueryAuthor <- optional $ queryParam @Text "author"
+  articlesQueryFavorited <- optional $ queryParam @Text "favorited"
+  articlesQueryLimit <- option 20 $ queryParam @Int32 "limit"
+  articlesQueryOffset <- option 0 $ queryParam @Int32 "offset"
   handleQuery $ DB.getArticles mbUserID ArticlesQuery {..}
 
 feed = do
   seg "feed"
   userID <- authorize
-  limit <- option 20 $ queryParamAs @Int32 "limit"
-  offset <- option 0 $ queryParamAs @Int32 "offset"
+  limit <- option 20 $ queryParam @Int32 "limit"
+  offset <- option 0 $ queryParam @Int32 "offset"
   handleQuery $ DB.feedArticles userID limit offset
 
 article = do
-  slug <- segParam
+  slug <- segParam @Text
   handleQuery $ DB.getArticle slug
 
 comments = do
-  slug <- segParam
+  slug <- segParam @Text
   seg "comments"
   mbUserID <- optional authorize
   handleQuery $ DB.getComments mbUserID slug
@@ -139,39 +139,39 @@ createArticle = do
   handleQuery $ DB.createArticle userID createArticleData
 
 createComment = do
-  slug <- segParam
+  slug <- segParam @Text
   seg "comments"
   userID <- authorize
   createCommentData <- bodyJSON @CreateComment
   handleQuery $ DB.createComment userID slug createCommentData
 
 favoriteArticle = do
-  slug <- segParam
+  slug <- segParam @Text
   seg "favorite"
   userID <- authorize
   handleQuery $ DB.favoriteArticle userID slug
 
 updateArticle = do
   put
-  slug <- segParam
+  slug <- segParam @Text
   userID <- authorize
   updateArticleData <- bodyJSON @UpdateArticle
   handleQuery $ DB.updateArticle userID slug updateArticleData
 
 deleteArticle = do
-  slug <- segParam
+  slug <- segParam @Text
   userID <- authorize
   handleQuery $ DB.deleteArticle userID slug
 
 deleteComment = do
-  slug <- segParam
+  slug <- segParam @Text
   seg "comments"
-  commentID <- segParamAs @Int32
+  commentID <- segParam @Int32
   userID <- authorize
   handleQuery $ DB.deleteComment userID slug commentID
 
 unfavoriteArticle = do
-  slug <- segParam
+  slug <- segParam @Text
   seg "favorite"
   userID <- authorize
   handleQuery $ DB.unfavoriteArticle userID slug
@@ -193,4 +193,4 @@ handleQuery query = do
   queryResult <- query
   case queryResult of
     Left _ -> abort422 [] genericError
-    Right value -> respondJSON [] value
+    Right value -> okJSON [] value

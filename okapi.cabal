@@ -44,32 +44,7 @@ library
     , random
     , text
     , transformers
-    , wai
-    , warp
-    , warp-tls
-  default-language: Haskell2010
-
-executable calc-ap
-  main-is: Main.hs
-  other-modules:
-      Paths_okapi
-  hs-source-dirs:
-      examples/calc-ap
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      aeson
-    , base >=4.7 && <5
-    , base64
-    , bytestring
-    , http-api-data
-    , http-types
-    , mmorph
-    , mtl
-    , okapi
-    , parser-combinators
-    , random
-    , text
-    , transformers
+    , vault
     , wai
     , warp
     , warp-tls
@@ -95,6 +70,7 @@ executable calc-exe
     , random
     , text
     , transformers
+    , vault
     , wai
     , warp
     , warp-tls
@@ -121,6 +97,7 @@ executable calc-no-do-exe
     , random
     , text
     , transformers
+    , vault
     , wai
     , warp
     , warp-tls
@@ -161,6 +138,7 @@ executable realworld-exe
     , text
     , time
     , transformers
+    , vault
     , vector
     , wai
     , warp
@@ -195,6 +173,7 @@ executable servant-exe
     , servant-server
     , text
     , transformers
+    , vault
     , wai
     , warp
     , warp-tls
@@ -220,6 +199,7 @@ executable todo-exe
     , random
     , text
     , transformers
+    , vault
     , wai
     , warp
     , warp-tls
@@ -246,6 +226,7 @@ test-suite okapi-test
     , random
     , text
     , transformers
+    , vault
     , wai
     , warp
     , warp-tls
