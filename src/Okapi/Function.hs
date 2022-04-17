@@ -48,12 +48,12 @@ module Okapi.Function
     okLucid,
     -- ERROR FUNCTIONS
     skip,
-    abort,
-    abort500,
-    abort401,
-    abort403,
-    abort404,
-    abort422,
+    error,
+    error500,
+    error401,
+    error403,
+    error404,
+    error422,
     -- ERROR HANDLING
     (<!>),
     optionalAbort,
@@ -86,7 +86,7 @@ import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WarpTLS as Warp
 import Okapi.Type
-  ( Error (Abort, Skip),
+  ( Failure (Error, Skip),
     Headers,
     MonadOkapi,
     OkapiT (..),
@@ -96,7 +96,7 @@ import Okapi.Type
   )
 import qualified Web.FormUrlEncoded as Web
 import qualified Web.HttpApiData as Web
-import Prelude hiding (head)
+import Prelude hiding (error, head)
 
 -- FOR RUNNING OKAPI
 
@@ -115,7 +115,7 @@ makeOkapiApp hoister okapiT request respond = do
   (eitherErrorsOrResponse, state) <- (StateT.runStateT . ExceptT.runExceptT . unOkapiT $ Morph.hoist hoister okapiT) (waiRequestToRequest request)
   case eitherErrorsOrResponse of
     Left Skip -> respond $ Wai.responseLBS HTTP.status404 [] "Not Found"
-    Left (Abort response) -> respond . responseToWaiResponse $ response
+    Left (Error response) -> respond . responseToWaiResponse $ response
     Right response -> respond . responseToWaiResponse $ response
 
 waiRequestToRequest :: Wai.Request -> Request
@@ -399,28 +399,28 @@ respond status headers body = do
 skip :: forall a m. MonadOkapi m => m a
 skip = Except.throwError Skip
 
-abort :: forall a m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m a
-abort status headers = Except.throwError . Abort . Response status headers
+error :: forall a m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m a
+error status headers = Except.throwError . Error . Response status headers
 
 ok200 :: MonadOkapi m => Headers -> LazyByteString.ByteString -> m Response
 ok200 = respond 200
 
-abort500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
-abort500 = abort 500
+error500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
+error500 = error 500
 
-abort401 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
-abort401 = abort 401
+error401 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
+error401 = error 401
 
-abort403 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
-abort403 = abort 403
+error403 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
+error403 = error 403
 
-abort404 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
-abort404 = abort 404
+error404 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
+error404 = error 404
 
-abort422 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
-abort422 = abort 422
+error422 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
+error422 = error 422
 
--- | Execute the next parser even if the first one throws an Abort error
+-- | Execute the next parser even if the first one throws an Error error
 (<!>) :: Monad m => OkapiT m a -> OkapiT m a -> OkapiT m a
 (OkapiT (ExceptT.ExceptT (StateT.StateT mx))) <!> (OkapiT (ExceptT.ExceptT (StateT.StateT my))) = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
   (eitherX, stateX) <- mx s
@@ -429,13 +429,13 @@ abort422 = abort 422
       (eitherY, stateY) <- my s
       case eitherY of
         Left Skip -> pure (Left Skip, s)
-        Left abort@(Abort _) -> pure (Left abort, s)
+        Left error@(Error _) -> pure (Left error, s)
         Right y -> pure (Right y, stateY)
-    Left abort@(Abort _) -> do
+    Left error@(Error _) -> do
       (eitherY, stateY) <- my s
       case eitherY of
         Left Skip -> pure (Left Skip, s)
-        Left abort@(Abort _) -> pure (Left abort, s)
+        Left error@(Error _) -> pure (Left error, s)
         Right y -> pure (Right y, stateY)
     Right x -> pure (Right x, stateX)
 

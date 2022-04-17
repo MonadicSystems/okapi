@@ -52,11 +52,11 @@ data Response = Response
     responseBody :: LazyByteString.ByteString
   }
 
-data Error = Skip | Abort Response
+data Failure = Skip | Error Response
 
-newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT.ExceptT Error (StateT.StateT Request m) a}
+newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT.ExceptT Failure (StateT.StateT Request m) a}
   deriving newtype
-    ( Except.MonadError Error,
+    ( Except.MonadError Failure,
       State.MonadState Request
     )
 
@@ -95,9 +95,9 @@ instance Monad m => Applicative.Alternative (OkapiT m) where
         (eitherY, stateY) <- my s
         case eitherY of
           Left Skip -> pure (Left Skip, s)
-          Left abort@(Abort _) -> pure (Left abort, s)
+          Left error@(Error _) -> pure (Left error, s)
           Right y -> pure (Right y, stateY)
-      Left abort@(Abort _) -> pure (Left abort, s)
+      Left error@(Error _) -> pure (Left error, s)
       Right x -> pure (Right x, stateX)
   {-# INLINEABLE (<|>) #-}
 
@@ -125,9 +125,9 @@ instance Monad m => Monad.MonadPlus (OkapiT m) where
         (eitherY, stateY) <- my s
         case eitherY of
           Left Skip -> pure (Left Skip, s)
-          Left abort@(Abort _) -> pure (Left abort, s)
+          Left error@(Error _) -> pure (Left error, s)
           Right y -> pure (Right y, stateY)
-      Left abort@(Abort _) -> pure (Left abort, s)
+      Left error@(Error _) -> pure (Left error, s)
       Right x -> pure (Right x, stateX)
   {-# INLINEABLE mplus #-}
 
@@ -138,7 +138,7 @@ instance Reader.MonadReader r m => Reader.MonadReader r (OkapiT m) where
   ask = Morph.lift Reader.ask
   local = mapOkapiT . Reader.local
     where
-      mapOkapiT :: (m (Either Error a, Request) -> n (Either Error b, Request)) -> OkapiT m a -> OkapiT n b
+      mapOkapiT :: (m (Either Failure a, Request) -> n (Either Failure b, Request)) -> OkapiT m a -> OkapiT n b
       mapOkapiT f okapiT = OkapiT . ExceptT.ExceptT . StateT.StateT $ f . StateT.runStateT (ExceptT.runExceptT $ unOkapiT okapiT)
   reader = Morph.lift . Reader.reader
 
@@ -159,6 +159,6 @@ type MonadOkapi m =
     Monad m,
     Monad.MonadPlus m,
     IO.MonadIO m,
-    Except.MonadError Error m,
+    Except.MonadError Failure m,
     State.MonadState Request m
   )

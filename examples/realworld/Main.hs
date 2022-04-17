@@ -10,7 +10,7 @@ import Conduit.Server
 import Conduit.Type
 import Control.Monad.Reader (runReaderT)
 import qualified Hasql.Connection as Connection
-import Okapi
+import qualified Okapi
 import System.Random
 import qualified Data.Text as Text
 
@@ -18,7 +18,7 @@ main :: IO ()
 main = do
   config <- getConfig
   setupDB $ configDBConnection config
-  runOkapi (hoistHandler config) 3000 conduit
+  Okapi.runOkapi (hoistHandler config) 3000 conduit
 
 hoistHandler :: Config -> Handler a -> IO a
 hoistHandler config app = runReaderT (runHandler app) config

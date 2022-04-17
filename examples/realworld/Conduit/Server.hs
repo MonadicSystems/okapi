@@ -19,13 +19,14 @@ import Data.Text
 import Data.Time
 import GHC.Generics
 import Hasql.Session (QueryError)
-import Okapi
+import Okapi (OkapiT (..), Response)
+import qualified Okapi
 
 type Okapi a = OkapiT Handler a
 
 conduit :: Okapi Response
 conduit = do
-  seg "api"
+  Okapi.seg "api"
   choice
     [ users,
       user,
@@ -35,71 +36,71 @@ conduit = do
     ]
 
 users = do
-  post
-  seg "users"
+  Okapi.post
+  Okapi.seg "users"
   login <|> register
 
 login = do
-  seg "login"
-  loginData <- bodyJSON @Login
+  Okapi.seg "login"
+  loginData <- Okapi.bodyJSON
   handleQuery $ DB.loginUser loginData
 
 register = do
-  registerData <- bodyJSON @Register
+  registerData <- Okapi.bodyJSON
   handleQuery $ DB.registerUser registerData
 
 user = do
-  seg "user"
+  Okapi.seg "user"
   userID <- authorize
   currentUser userID <|> updateUser userID
 
 currentUser userID = do
-  get
+  Okapi.get
   handleQuery $ DB.getCurrentUser userID
 
 updateUser userID = do
-  put
-  updateUserData <- bodyJSON @UpdateUser
+  Okapi.put
+  updateUserData <- Okapi.bodyJSON @UpdateUser
   handleQuery $ DB.updateUser userID updateUserData
 
 profiles = do
-  seg "profiles"
-  username <- segParam
-  profile username <|> (seg "follow" >> follow username <|> unfollow username)
+  Okapi.seg "profiles"
+  username <- Okapi.segParam
+  profile username <|> (Okapi.seg "follow" >> follow username <|> unfollow username)
 
 profile username = do
-  get
+  Okapi.get
   mbUserID <- optional authorize
   handleQuery $ DB.getProfile mbUserID username
 
 follow username = do
-  post
+  Okapi.post
   userID <- authorize
   handleQuery $ DB.followUser userID username
 
 unfollow username = do
-  delete
+  Okapi.delete
   userID <- authorize
   handleQuery $ DB.unfollowUser userID username
 
 articles = do
-  seg "articles"
+  Okapi.seg "articles"
   choice
-    [ get
+    [ Okapi.get
         >> choice
           [ feed,
             comments,
             article,
             global
           ],
-      post
+      Okapi.post
         >> choice
           [ createComment,
             favoriteArticle,
             createArticle
           ],
       updateArticle,
-      delete
+      Okapi.delete
         >> choice
           [ deleteComment,
             unfavoriteArticle,
@@ -109,88 +110,88 @@ articles = do
 
 global = do
   mbUserID <- optional authorize
-  articlesQueryTag <- optional $ queryParam @Text "tag"
-  articlesQueryAuthor <- optional $ queryParam @Text "author"
-  articlesQueryFavorited <- optional $ queryParam @Text "favorited"
-  articlesQueryLimit <- option 20 $ queryParam @Int32 "limit"
-  articlesQueryOffset <- option 0 $ queryParam @Int32 "offset"
+  articlesQueryTag <- optional $ Okapi.queryParam "tag"
+  articlesQueryAuthor <- optional $ Okapi.queryParam "author"
+  articlesQueryFavorited <- optional $ Okapi.queryParam "favorited"
+  articlesQueryLimit <- option 20 $ Okapi.queryParam "limit"
+  articlesQueryOffset <- option 0 $ Okapi.queryParam "offset"
   handleQuery $ DB.getArticles mbUserID ArticlesQuery {..}
 
 feed = do
-  seg "feed"
+  Okapi.seg "feed"
   userID <- authorize
-  limit <- option 20 $ queryParam @Int32 "limit"
-  offset <- option 0 $ queryParam @Int32 "offset"
+  limit <- option 20 $ Okapi.queryParam "limit"
+  offset <- option 0 $ Okapi.queryParam "offset"
   handleQuery $ DB.feedArticles userID limit offset
 
 article = do
-  slug <- segParam @Text
+  slug <- Okapi.segParam
   handleQuery $ DB.getArticle slug
 
 comments = do
-  slug <- segParam @Text
-  seg "comments"
+  slug <- Okapi.segParam
+  Okapi.seg "comments"
   mbUserID <- optional authorize
   handleQuery $ DB.getComments mbUserID slug
 
 createArticle = do
   userID <- authorize
-  createArticleData <- bodyJSON @CreateArticle
+  createArticleData <- Okapi.bodyJSON
   handleQuery $ DB.createArticle userID createArticleData
 
 createComment = do
-  slug <- segParam @Text
-  seg "comments"
+  slug <- Okapi.segParam
+  Okapi.seg "comments"
   userID <- authorize
-  createCommentData <- bodyJSON @CreateComment
+  createCommentData <- Okapi.bodyJSON
   handleQuery $ DB.createComment userID slug createCommentData
 
 favoriteArticle = do
-  slug <- segParam @Text
-  seg "favorite"
+  slug <- Okapi.segParam
+  Okapi.seg "favorite"
   userID <- authorize
   handleQuery $ DB.favoriteArticle userID slug
 
 updateArticle = do
-  put
-  slug <- segParam @Text
+  Okapi.put
+  slug <- Okapi.segParam
   userID <- authorize
-  updateArticleData <- bodyJSON @UpdateArticle
+  updateArticleData <- Okapi.bodyJSON
   handleQuery $ DB.updateArticle userID slug updateArticleData
 
 deleteArticle = do
-  slug <- segParam @Text
+  slug <- Okapi.segParam
   userID <- authorize
   handleQuery $ DB.deleteArticle userID slug
 
 deleteComment = do
-  slug <- segParam @Text
-  seg "comments"
-  commentID <- segParam @Int32
+  slug <- Okapi.segParam
+  Okapi.seg "comments"
+  commentID <- Okapi.segParam
   userID <- authorize
   handleQuery $ DB.deleteComment userID slug commentID
 
 unfavoriteArticle = do
-  slug <- segParam @Text
-  seg "favorite"
+  slug <- Okapi.segParam
+  Okapi.seg "favorite"
   userID <- authorize
   handleQuery $ DB.unfavoriteArticle userID slug
 
 tags = do
-  get
-  seg "tags"
+  Okapi.get
+  Okapi.seg "tags"
   handleQuery DB.getTags
 
 authorize = do
-  authHeaderValue <- auth
+  authHeaderValue <- Okapi.auth
   jwtSecret <- grab @Text
   case extractToken authHeaderValue >>= verifyToken jwtSecret of
-    Nothing -> abort401 [] ""
+    Nothing -> Okapi.error401 [] ""
     Just userID -> pure userID
 
 handleQuery :: ToJSON a => Okapi (Either QueryError a) -> Okapi Response
 handleQuery query = do
   queryResult <- query
   case queryResult of
-    Left _ -> abort422 [] genericError
-    Right value -> okJSON [] value
+    Left _ -> Okapi.error422 [] genericError
+    Right value -> Okapi.okJSON [] value

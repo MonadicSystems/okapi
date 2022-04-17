@@ -87,7 +87,7 @@ divOp = do
   seg "div"
   (x, y) <- getArgs
   if y == 0
-    then abort403 [] "Forbidden"
+    then error403 [] "Forbidden"
     else respondJSON [] $ DivResult {answer = x `div` y, remainder = x `mod` y}
 
 getArgs :: Okapi (Int, Int)
@@ -140,7 +140,7 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp = seg "div" >> (getArgs >>= (\(x, y) -> if y == 0 then abort403 [] "Forbidden" else respondJSON [] $ DivResult (x `div` y) (x `mod` y)))
+divOp = seg "div" >> (getArgs >>= (\(x, y) -> if y == 0 then error403 [] "Forbidden" else respondJSON [] $ DivResult (x `div` y) (x `mod` y)))
 
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
@@ -182,7 +182,7 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp = seg "div" *> (getArgs >>= (\(x, y) -> if y == 0 then abort403 [] "Forbidden" else respondJSON [] $ DivResult (x `div` y) (x `mod` y)))
+divOp = seg "div" *> (getArgs >>= (\(x, y) -> if y == 0 then error403 [] "Forbidden" else respondJSON [] $ DivResult (x `div` y) (x `mod` y)))
 
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where

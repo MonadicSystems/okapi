@@ -9,6 +9,7 @@ import Data.Aeson (ToJSON)
 import Data.Text
 import GHC.Generics (Generic)
 import Okapi
+import Control.Monad.Identity (Identity)
 
 main :: IO ()
 main = runOkapi id 3000 calc
