@@ -44,7 +44,7 @@ module Okapi.Function
     -- RESPOND FUNCTIONS
     okPlainText,
     okJSON,
-    okHTML,
+    ok,
     okLucid,
     -- ERROR FUNCTIONS
     skip,
@@ -372,11 +372,11 @@ okPlainText headers = respond 200 ([("Content-Type", "text/plain")] <> headers) 
 okJSON :: forall a m. (MonadOkapi m, Aeson.ToJSON a) => Headers -> a -> m Response
 okJSON headers = respond 200 ([("Content-Type", "application/json")] <> headers) . Aeson.encode
 
-okHTML :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Response
-okHTML headers = respond 200 ([("Content-Type", "text/html")] <> headers)
+ok :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Response
+ok headers = respond 200 ([("Content-Type", "text/html")] <> headers)
 
 okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Response
-okLucid headers = okHTML headers . Lucid.renderBS . Lucid.toHtml
+okLucid headers = ok headers . Lucid.renderBS . Lucid.toHtml
 
 respond :: forall m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m Response
 respond status headers body = do
