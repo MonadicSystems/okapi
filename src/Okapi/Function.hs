@@ -46,7 +46,7 @@ module Okapi.Function
     okJSON,
     ok,
     okLucid,
-    -- ERROR FUNCTIONS
+    -- FAILURE FUNCTIONS
     skip,
     error,
     error500,
@@ -56,8 +56,8 @@ module Okapi.Function
     error422,
     -- ERROR HANDLING
     (<!>),
-    optionalAbort,
-    optionAbort,
+    optionalError,
+    optionError,
   )
 where
 
@@ -439,12 +439,12 @@ error422 = error 422
         Right y -> pure (Right y, stateY)
     Right x -> pure (Right x, stateX)
 
-optionalAbort :: Monad m => OkapiT m a -> OkapiT m (Maybe a)
-optionalAbort parser = (Just <$> parser) <!> pure Nothing
+optionalError :: Monad m => OkapiT m a -> OkapiT m (Maybe a)
+optionalError parser = (Just <$> parser) <!> pure Nothing
 
-optionAbort :: Monad m => a -> OkapiT m a -> OkapiT m a
-optionAbort value parser = do
-  mbValue <- optionalAbort parser
+optionError :: Monad m => a -> OkapiT m a -> OkapiT m a
+optionError value parser = do
+  mbValue <- optionalError parser
   case mbValue of
     Nothing -> pure value
     Just value' -> pure value'
