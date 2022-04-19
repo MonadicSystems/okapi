@@ -19,12 +19,12 @@ import Data.Text
 import Data.Time
 import GHC.Generics
 import Hasql.Session (QueryError)
-import Okapi (OkapiT (..), Response)
+import Okapi (OkapiT (..), Result)
 import qualified Okapi
 
 type Okapi a = OkapiT Handler a
 
-conduit :: Okapi Response
+conduit :: Okapi Okapi.Result
 conduit = do
   Okapi.seg "api"
   choice
@@ -189,7 +189,7 @@ authorize = do
     Nothing -> Okapi.error401 [] ""
     Just userID -> pure userID
 
-handleQuery :: ToJSON a => Okapi (Either QueryError a) -> Okapi Response
+handleQuery :: ToJSON a => Okapi (Either QueryError a) -> Okapi Okapi.Result
 handleQuery query = do
   queryResult <- query
   case queryResult of

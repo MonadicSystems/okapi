@@ -16,37 +16,37 @@ okapiApplication = makeOkapiApp id okapiAPI
 
 type Okapi a = OkapiT IO a
 
-okapiAPI :: Okapi Response
+okapiAPI :: Okapi Result
 okapiAPI = do
   get
   seg "okapi"
   _ <- optional $ seg "" -- Trailing slash...This is needed for now but we can change it so it's automatically handled
   okLucid [] (Greeting "okapi") <|> calc
 
-calc :: Okapi Response
+calc :: Okapi Result
 calc = do
   seg "calc"
   addOp <|> subOp <|> mulOp <|> divOp
 
-addOp :: Okapi Response
+addOp :: Okapi Result
 addOp = do
   seg "add"
   (x, y) <- getArgs
   okLucid [] $ AddResult x y $ x + y
 
-subOp :: Okapi Response
+subOp :: Okapi Result
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
   okLucid [] $ SubResult x y $ x - y
 
-mulOp :: Okapi Response
+mulOp :: Okapi Result
 mulOp = do
   seg "mul"
   (x, y) <- getArgs
   okLucid [] $ MulResult x y $ x * y
 
-divOp :: Okapi Response
+divOp :: Okapi Result
 divOp = do
   seg "div"
   (x, y) <- getArgs
@@ -66,12 +66,12 @@ getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
     getArgsFromPath :: Okapi (Int, Int)
     getArgsFromPath = do
-      x <- segParam @Int
-      y <- segParam @Int
+      x <- segParam
+      y <- segParam
       pure (x, y)
 
     getArgsFromQueryParams :: Okapi (Int, Int)
     getArgsFromQueryParams = do
-      x <- queryParam @Int "x"
-      y <- queryParam @Int "y"
+      x <- queryParam "x"
+      y <- queryParam "y"
       pure (x, y)

@@ -3,7 +3,14 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: lucid-htmx-0.1.0.6@sha256:83d9eed5ff74778a2dfc3f320a66b08592a2880abca28d75747a0513a39bd871,1528
+    pantry-tree:
+      size: 427
+      sha256: e7e0ebb5432ec6dd278e1ac594a94aa3311e378c683275274874dfee2e12dfe3
+  original:
+    hackage: lucid-htmx-0.1.0.6@sha256:83d9eed5ff74778a2dfc3f320a66b08592a2880abca28d75747a0513a39bd871,1528
 snapshots:
 - completed:
     size: 617355

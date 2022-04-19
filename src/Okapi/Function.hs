@@ -8,6 +8,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Okapi.Function
@@ -46,6 +47,7 @@ module Okapi.Function
     okJSON,
     ok,
     okLucid,
+    connectEventSource,
     -- FAILURE FUNCTIONS
     skip,
     error,
@@ -61,12 +63,15 @@ module Okapi.Function
   )
 where
 
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.STM.TVar as TVar
 import qualified Control.Monad.Except as Except
 import qualified Control.Monad.IO.Class as IO
 import qualified Control.Monad.Morph as Morph
 import qualified Control.Monad.State.Class as State
+import qualified Control.Monad.Trans.Except
 import qualified Control.Monad.Trans.Except as ExceptT
-import qualified Control.Monad.Trans.State as StateT
+import qualified Control.Monad.Trans.State.Strict as StateT
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Encoding as Aeson
 import qualified Data.Bifunctor as Bifunctor
@@ -85,6 +90,8 @@ import qualified Network.HTTP.Types as HTTP
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WarpTLS as Warp
+import qualified Network.Wai.Internal as Wai
+import qualified Okapi.EventSource as EventSource
 import Okapi.Type
   ( Failure (Error, Skip),
     Headers,
@@ -93,6 +100,8 @@ import Okapi.Type
     QueryItem,
     Request (..),
     Response (..),
+    Result (..),
+    State (..),
   )
 import qualified Web.FormUrlEncoded as Web
 import qualified Web.HttpApiData as Web
@@ -100,35 +109,55 @@ import Prelude hiding (error, head)
 
 -- FOR RUNNING OKAPI
 
-runOkapi :: Monad m => (forall a. m a -> IO a) -> Int -> OkapiT m Response -> IO ()
+runOkapi :: Monad m => (forall a. m a -> IO a) -> Int -> OkapiT m Result -> IO ()
 runOkapi hoister port okapiT = do
   print $ "Running Okapi App on port " <> show port
   Warp.run port $ makeOkapiApp hoister okapiT
 
-runOkapiTLS :: Monad m => (forall a. m a -> IO a) -> Warp.TLSSettings -> Warp.Settings -> OkapiT m Response -> IO ()
+runOkapiTLS :: Monad m => (forall a. m a -> IO a) -> Warp.TLSSettings -> Warp.Settings -> OkapiT m Result -> IO ()
 runOkapiTLS hoister tlsSettings settings okapiT = do
   print "Running servo on port 43"
   Warp.runTLS tlsSettings settings $ makeOkapiApp hoister okapiT
 
-makeOkapiApp :: Monad m => (forall a. m a -> IO a) -> OkapiT m Response -> Wai.Application
-makeOkapiApp hoister okapiT request respond = do
-  (eitherErrorsOrResponse, state) <- (StateT.runStateT . ExceptT.runExceptT . unOkapiT $ Morph.hoist hoister okapiT) (waiRequestToRequest request)
-  case eitherErrorsOrResponse of
+makeOkapiApp :: Monad m => (forall a. m a -> IO a) -> OkapiT m Result -> Wai.Application
+makeOkapiApp hoister okapiT waiRequest respond = do
+  -- eventSourcePoolTVar <- TVar.newTVarIO EventSource.emptyEventSourcePool
+  (eitherFailureOrResult, _state) <- (StateT.runStateT . ExceptT.runExceptT . unOkapiT $ Morph.hoist hoister okapiT) (waiRequestToState {-eventSourcePoolTVar-} waiRequest)
+  case eitherFailureOrResult of
     Left Skip -> respond $ Wai.responseLBS HTTP.status404 [] "Not Found"
     Left (Error response) -> respond . responseToWaiResponse $ response
-    Right response -> respond . responseToWaiResponse $ response
+    Right (ResultResponse response) -> respond . responseToWaiResponse $ response
+    Right (ResultEventSource eventSource) -> EventSource.eventSourceAppUnagiChan eventSource waiRequest respond
 
-waiRequestToRequest :: Wai.Request -> Request
-waiRequestToRequest waiRequest =
+-- Right (ResultJob job) -> (\_ _ -> do Concurrent.forkIO job; pure Wai.ResponseReceived)
+
+waiRequestToState :: Wai.Request -> State
+waiRequestToState waiRequest =
   let requestMethod = Wai.requestMethod waiRequest
       requestPath = Wai.pathInfo waiRequest
       requestQuery = HTTP.queryToQueryText $ Wai.queryString waiRequest
       requestBody = Wai.strictRequestBody waiRequest
       requestHeaders = Wai.requestHeaders waiRequest
       requestVault = Wai.vault waiRequest
-      requestMethodParsed = False
-      requestBodyParsed = False
-   in Request {..}
+      stateRequest = Request {..}
+      stateRequestMethodParsed = False
+      stateRequestBodyParsed = False
+   in State {..}
+
+{-
+waiRequestToState :: TVar.TVar EventSource.EventSourcePool -> Wai.Request -> State
+waiRequestToState stateEventSourcePoolTVar waiRequest =
+  let requestMethod = Wai.requestMethod waiRequest
+      requestPath = Wai.pathInfo waiRequest
+      requestQuery = HTTP.queryToQueryText $ Wai.queryString waiRequest
+      requestBody = Wai.strictRequestBody waiRequest
+      requestHeaders = Wai.requestHeaders waiRequest
+      requestVault = Wai.vault waiRequest
+      stateRequest = Request {..}
+      stateRequestMethodParsed = False
+      stateRequestBodyParsed = False
+   in State {..}
+-}
 
 responseToWaiResponse :: Response -> Wai.Response
 responseToWaiResponse Response {..} = Wai.responseLBS (toEnum $ fromEnum responseStatus) responseHeaders responseBody
@@ -165,16 +194,16 @@ patch = method HTTP.methodPatch
 method :: forall m. MonadOkapi m => HTTP.Method -> m ()
 method method = do
   IO.liftIO $ print $ "Attempting to parse method: " <> Text.decodeUtf8 method
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m ()
-    logic request
-      | isMethodParsed request = Except.throwError Skip
-      | not $ methodMatches request method = Except.throwError Skip
+    logic :: State -> m ()
+    logic state
+      | isMethodParsed state = Except.throwError Skip
+      | not $ methodMatches state method = Except.throwError Skip
       | otherwise = do
         IO.liftIO $ print $ "Method parsed: " <> Text.decodeUtf8 method
-        State.put $ methodParsed request
+        State.put $ methodParsed state
         pure ()
 
 -- PARSING PATHS
@@ -191,17 +220,17 @@ segs = mapM_ seg
 segWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
 segWith predicate = do
   IO.liftIO $ print "Attempting to parse seg"
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m ()
-    logic request
-      | not $ segMatches request predicate = do
+    logic :: State -> m ()
+    logic state
+      | not $ segMatches state predicate = do
         IO.liftIO $ print "Couldn't match seg"
         Except.throwError Skip
       | otherwise = do
-        IO.liftIO $ print $ "Path parsed: " <> show (getSeg request)
-        State.put $ segParsed request
+        IO.liftIO $ print $ "Path parsed: " <> show (getSeg state)
+        State.put $ segParsed state
         pure ()
 
 -- | TODO: Change Read a constraint to custom typeclass or FromHTTPApiData
@@ -209,29 +238,29 @@ segWith predicate = do
 segParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => m a
 segParam = do
   IO.liftIO $ print "Attempting to get param from seg"
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m a
-    logic request =
-      case getSeg request >>= Web.parseUrlPieceMaybe of
+    logic :: State -> m a
+    logic state =
+      case getSeg state >>= Web.parseUrlPieceMaybe of
         Nothing -> Except.throwError Skip
         Just value -> do
           IO.liftIO $ print "Path param parsed"
-          State.put $ segParsed request
+          State.put $ segParsed state
           pure value
 
 -- | Matches entire remaining path or fails
 path :: forall m. MonadOkapi m => [Text.Text] -> m ()
 path pathMatch = do
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m ()
-    logic request
-      | requestPath request /= pathMatch = Except.throwError Skip
+    logic :: State -> m ()
+    logic state
+      | getPath state /= pathMatch = Except.throwError Skip
       | otherwise = do
-        State.put $ pathParsed request
+        State.put $ pathParsed state
         pure ()
 
 -- PARSING QUERY PARAMETERS
@@ -240,15 +269,15 @@ path pathMatch = do
 queryParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => Text.Text -> m a
 queryParam key = do
   IO.liftIO $ print $ "Attempting to get query param " <> key
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m a
-    logic request
-      | not $ isMethodParsed request = Except.throwError Skip
-      | not $ isPathParsed request = Except.throwError Skip
+    logic :: State -> m a
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
       | otherwise =
-        case getQueryItem request (key ==) of
+        case getQueryItem state (key ==) of
           Nothing -> Except.throwError Skip
           Just queryItem -> case queryItem of
             (_, Nothing) ->
@@ -258,37 +287,37 @@ queryParam key = do
                 Except.throwError Skip
               Just value -> do
                 IO.liftIO $ print $ "Query param parsed: " <> "(" <> key <> "," <> param <> ")"
-                State.put $ queryParamParsed request queryItem
+                State.put $ queryParamParsed state queryItem
                 pure value
 
 queryFlag :: forall m. MonadOkapi m => Text.Text -> m Bool
 queryFlag key = do
   IO.liftIO $ print $ "Checking if query param exists " <> key
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m Bool
-    logic request
-      | not $ isMethodParsed request = Except.throwError Skip
-      | not $ isPathParsed request = Except.throwError Skip
+    logic :: State -> m Bool
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
       | otherwise =
-        case getQueryItem request (key ==) of
+        case getQueryItem state (key ==) of
           Nothing -> pure False
           Just queryItem -> do
             IO.liftIO $ print $ "Query param exists: " <> key
-            State.put $ queryParamParsed request queryItem
+            State.put $ queryParamParsed state queryItem
             pure True
 
 -- PARSING HEADERS
 
 header :: forall m. MonadOkapi m => HTTP.HeaderName -> m Text.Text
 header headerName = do
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m Text.Text
-    logic request =
-      case getHeader request headerName of
+    logic :: State -> m Text.Text
+    logic state =
+      case getHeader state headerName of
         Nothing -> Except.throwError Skip
         Just header@(name, value) -> pure $ Text.decodeUtf8 value
 
@@ -298,12 +327,12 @@ auth = header "Authorization"
 basicAuth :: forall m. MonadOkapi m => m (Text.Text, Text.Text)
 basicAuth = do
   IO.liftIO $ print "Attempting to get basic auth from headers"
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m (Text.Text, Text.Text)
-    logic request = do
-      case getHeader request "Authorization" of
+    logic :: State -> m (Text.Text, Text.Text)
+    logic state = do
+      case getHeader state "Authorization" of
         Nothing -> Except.throwError Skip
         Just header@(_, authValue) -> do
           case Char8.words authValue of
@@ -312,7 +341,7 @@ basicAuth = do
               Right decodedCreds -> case Char8.split ':' decodedCreds of
                 [userID, password] -> do
                   IO.liftIO $ print "Basic auth acquired"
-                  State.put $ headerParsed request header
+                  State.put $ headerParsed state header
                   pure $ Bifunctor.bimap Text.decodeUtf8 Text.decodeUtf8 (userID, password)
                 _ -> Except.throwError Skip
             _ -> Except.throwError Skip
@@ -325,74 +354,91 @@ basicAuth = do
 bodyJSON :: forall a m. (MonadOkapi m, Aeson.FromJSON a) => m a
 bodyJSON = do
   IO.liftIO $ print "Attempting to parse JSON body"
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m a
-    logic request
-      | not $ isMethodParsed request = Except.throwError Skip
-      | not $ isPathParsed request = Except.throwError Skip
+    logic :: State -> m a
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
       | otherwise =
         do
-          body <- IO.liftIO $ getRequestBody request
+          body <- IO.liftIO $ getRequestBody state
           case Aeson.decode body of
             Nothing -> do
               IO.liftIO $ print $ "Couldn't parse " <> show body
               Except.throwError Skip
             Just value -> do
               IO.liftIO $ print "JSON body parsed"
-              State.put $ bodyParsed request
+              State.put $ bodyParsed state
               pure value
 
 bodyForm :: forall a m. (MonadOkapi m, Web.FromForm a) => m a
 bodyForm = do
   IO.liftIO $ print "Attempting to parse FormURLEncoded body"
-  request <- State.get
-  logic request
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m a
-    logic request
-      | not $ isMethodParsed request = Except.throwError Skip
-      | not $ isPathParsed request = Except.throwError Skip
+    logic :: State -> m a
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
       | otherwise =
         do
-          body <- IO.liftIO $ getRequestBody request
+          body <- IO.liftIO $ getRequestBody state
           case eitherToMaybe $ Web.urlDecodeAsForm body of
             Nothing -> Except.throwError Skip
             Just value -> do
               IO.liftIO $ print "FormURLEncoded body parsed"
-              State.put $ bodyParsed request
+              State.put $ bodyParsed state
               pure value
 
 -- RESPONSE FUNCTIONS
 
-okPlainText :: forall m. MonadOkapi m => Headers -> Text.Text -> m Response
+okPlainText :: forall m. MonadOkapi m => Headers -> Text.Text -> m Result
 okPlainText headers = respond 200 ([("Content-Type", "text/plain")] <> headers) . LazyByteString.fromStrict . Text.encodeUtf8
 
-okJSON :: forall a m. (MonadOkapi m, Aeson.ToJSON a) => Headers -> a -> m Response
+okJSON :: forall a m. (MonadOkapi m, Aeson.ToJSON a) => Headers -> a -> m Result
 okJSON headers = respond 200 ([("Content-Type", "application/json")] <> headers) . Aeson.encode
 
-ok :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Response
-ok headers = respond 200 ([("Content-Type", "text/html")] <> headers)
-
-okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Response
+okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Result
 okLucid headers = ok headers . Lucid.renderBS . Lucid.toHtml
 
-respond :: forall m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m Response
-respond status headers body = do
-  IO.liftIO $ print "Attempting to respond from Servo"
-  request <- State.get
-  logic request
+-- TODO: Use response builder
+ok :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
+ok headers = respond 200 ([("Content-Type", "text/html")] <> headers)
+
+connectEventSource :: forall m. MonadOkapi m => EventSource.EventSource -> m Result
+connectEventSource eventSource = do
+  IO.liftIO $ print "Attempting to connect SSE source from Servo"
+  state <- State.get
+  logic state
   where
-    logic :: Request -> m Response
-    logic request
-      | not $ isMethodParsed request = Except.throwError Skip
-      | not $ isPathParsed request = Except.throwError Skip
-      | not $ isQueryParamsParsed request = Except.throwError Skip
+    logic :: State -> m Result
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
+      | not $ isQueryParamsParsed state = Except.throwError Skip
       -- not $ isBodyParsed request = Except.throwError Skip
       | otherwise = do
         IO.liftIO $ print "Responded from servo, passing off to WAI"
-        pure $ Response status headers body
+        pure $ ResultEventSource eventSource
+
+respond :: forall m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m Result
+respond status headers body = do
+  IO.liftIO $ print "Attempting to respond from Servo"
+  state <- State.get
+  logic state
+  where
+    logic :: State -> m Result
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
+      | not $ isQueryParamsParsed state = Except.throwError Skip
+      -- not $ isBodyParsed request = Except.throwError Skip
+      | otherwise = do
+        IO.liftIO $ print "Responded from servo, passing off to WAI"
+        pure $ ResultResponse $ Response status headers body
 
 -- ERROR FUNCTIONS
 
@@ -402,7 +448,7 @@ skip = Except.throwError Skip
 error :: forall a m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m a
 error status headers = Except.throwError . Error . Response status headers
 
-ok200 :: MonadOkapi m => Headers -> LazyByteString.ByteString -> m Response
+ok200 :: MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
 ok200 = respond 200
 
 error500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
@@ -451,55 +497,58 @@ optionError value parser = do
 
 -- PARSING GUARDS AND SWITCHES
 
-isMethodParsed :: Request -> Bool
-isMethodParsed Request {..} = requestMethodParsed
+isMethodParsed :: State -> Bool
+isMethodParsed State {..} = stateRequestMethodParsed
 
-isPathParsed :: Request -> Bool
-isPathParsed Request {..} = Prelude.null requestPath
+isPathParsed :: State -> Bool
+isPathParsed State {..} = Prelude.null $ requestPath stateRequest
 
-isQueryParamsParsed :: Request -> Bool
-isQueryParamsParsed Request {..} = Prelude.null requestQuery
+isQueryParamsParsed :: State -> Bool
+isQueryParamsParsed State {..} = Prelude.null $ requestQuery stateRequest
 
-isBodyParsed :: Request -> Bool
-isBodyParsed Request {..} = requestBodyParsed
+isBodyParsed :: State -> Bool
+isBodyParsed State {..} = stateRequestBodyParsed
 
-methodMatches :: Request -> HTTP.Method -> Bool
-methodMatches Request {..} method = method == requestMethod
+methodMatches :: State -> HTTP.Method -> Bool
+methodMatches State {..} method = method == requestMethod stateRequest
 
-segMatches :: Request -> (Text.Text -> Bool) -> Bool
-segMatches request predicate =
-  maybe False predicate $ getSeg request
+segMatches :: State -> (Text.Text -> Bool) -> Bool
+segMatches state predicate =
+  maybe False predicate $ getSeg state
 
-getSeg :: Request -> Maybe Text.Text
-getSeg Request {..} = safeHead requestPath
+getPath :: State -> [Text.Text]
+getPath State {..} = requestPath stateRequest
 
-getQueryItem :: Request -> (Text.Text -> Bool) -> Maybe QueryItem
-getQueryItem Request {..} predicate = Foldable.find (\(key, _) -> predicate key) requestQuery
+getSeg :: State -> Maybe Text.Text
+getSeg State {..} = safeHead (requestPath stateRequest)
 
-getHeader :: Request -> HTTP.HeaderName -> Maybe HTTP.Header
-getHeader Request {..} key = Foldable.find (\(key', _) -> key == key') requestHeaders
+getQueryItem :: State -> (Text.Text -> Bool) -> Maybe QueryItem
+getQueryItem State {..} predicate = Foldable.find (\(key, _) -> predicate key) (requestQuery stateRequest)
 
-getRequestBody :: Request -> IO LazyByteString.ByteString
-getRequestBody Request {..} = requestBody
+getHeader :: State -> HTTP.HeaderName -> Maybe HTTP.Header
+getHeader State {..} key = Foldable.find (\(key', _) -> key == key') (requestHeaders stateRequest)
 
-methodParsed :: Request -> Request
-methodParsed request = request {requestMethodParsed = True}
+getRequestBody :: State -> IO LazyByteString.ByteString
+getRequestBody State {..} = requestBody stateRequest
 
-segParsed :: Request -> Request
-segParsed request = request {requestPath = Prelude.drop 1 $ requestPath request}
+methodParsed :: State -> State
+methodParsed state = state {stateRequestMethodParsed = True}
 
-pathParsed :: Request -> Request
-pathParsed request = request {requestPath = []}
+segParsed :: State -> State
+segParsed state = state {stateRequest = (stateRequest state) {requestPath = Prelude.drop 1 $ requestPath $ stateRequest state}}
 
-queryParamParsed :: Request -> QueryItem -> Request
-queryParamParsed request queryItem = request {requestQuery = List.delete queryItem $ requestQuery request}
+pathParsed :: State -> State
+pathParsed state = state {stateRequest = (stateRequest state) {requestPath = []}}
+
+queryParamParsed :: State -> QueryItem -> State
+queryParamParsed state queryItem = state {stateRequest = (stateRequest state) {requestQuery = List.delete queryItem $ requestQuery $ stateRequest state}}
 
 -- TODO: Don't List.delete header??
-headerParsed :: Request -> HTTP.Header -> Request
-headerParsed request header = request {requestHeaders = List.delete header $ requestHeaders request}
+headerParsed :: State -> HTTP.Header -> State
+headerParsed state header = state {stateRequest = (stateRequest state) {requestHeaders = List.delete header $ requestHeaders $ stateRequest state}}
 
-bodyParsed :: Request -> Request
-bodyParsed request = request {requestBodyParsed = True}
+bodyParsed :: State -> State
+bodyParsed state = state {stateRequestBodyParsed = True}
 
 -- HELPERS
 

@@ -15,25 +15,25 @@ main = runOkapi id 3000 calc
 
 type Okapi a = OkapiT IO a
 
-calc :: Okapi Response
+calc :: Okapi Result
 calc = do
   get
   seg "calc"
   addOp <|> subOp <|> mulOp <|> divOp
 
-addOp :: Okapi Response
+addOp :: Okapi Result
 addOp = do
   seg "add"
   (x, y) <- getArgs
   okJSON [] $ x + y
 
-subOp :: Okapi Response
+subOp :: Okapi Result
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
   okJSON [] $ x - y
 
-mulOp :: Okapi Response
+mulOp :: Okapi Result
 mulOp = do
   seg "mul"
   (x, y) <- getArgs
@@ -45,7 +45,7 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp :: Okapi Response
+divOp :: Okapi Result
 divOp = do
   seg "div"
   (x, y) <- getArgs

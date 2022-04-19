@@ -8,11 +8,17 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StrictData #-}
 
 module Okapi.Type where
 
 import qualified Control.Applicative as Applicative
+import qualified Control.Concurrent.Chan as Chan
+-- import qualified Network.Wai.EventSource as EventSource
+
+import qualified Control.Concurrent.STM.TVar as TVar
 import qualified Control.Monad as Monad
 import qualified Control.Monad.Except as Except
 import qualified Control.Monad.IO.Class as IO
@@ -20,12 +26,13 @@ import qualified Control.Monad.Morph as Morph
 import qualified Control.Monad.Reader.Class as Reader
 import qualified Control.Monad.State.Class as State
 import qualified Control.Monad.Trans.Except as ExceptT
-import qualified Control.Monad.Trans.State as StateT
+import qualified Control.Monad.Trans.State.Strict as StateT
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified GHC.Natural as Natural
 import qualified Network.HTTP.Types as HTTP
+import qualified Okapi.EventSource as EventSource
 
 type Path = [Text.Text]
 
@@ -35,16 +42,28 @@ type QueryItem = (Text.Text, Maybe Text.Text)
 
 type Query = [QueryItem]
 
+data State = State
+  { stateRequest :: Request,
+    -- , stateEventSourcePoolTVar :: TVar.TVar EventSource.EventSourcePool
+    stateRequestMethodParsed :: Bool,
+    stateRequestBodyParsed :: Bool
+    -- , stateResulted :: Bool
+  }
+
 data Request = Request
   { requestMethod :: HTTP.Method,
     requestPath :: Path,
     requestQuery :: Query,
     requestBody :: IO LazyByteString.ByteString,
     requestHeaders :: Headers,
-    requestVault :: Vault.Vault,
-    requestMethodParsed :: Bool,
-    requestBodyParsed :: Bool
+    requestVault :: Vault.Vault
   }
+
+data Result
+  = ResultResponse Response
+  | ResultEventSource EventSource.EventSource
+
+-- ResultJob (IO ())
 
 data Response = Response
   { responseStatus :: Natural.Natural,
@@ -54,10 +73,10 @@ data Response = Response
 
 data Failure = Skip | Error Response
 
-newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT.ExceptT Failure (StateT.StateT Request m) a}
+newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT.ExceptT Failure (StateT.StateT State m) a}
   deriving newtype
     ( Except.MonadError Failure,
-      State.MonadState Request
+      State.MonadState State
     )
 
 instance Functor m => Functor (OkapiT m) where
@@ -138,9 +157,13 @@ instance Reader.MonadReader r m => Reader.MonadReader r (OkapiT m) where
   ask = Morph.lift Reader.ask
   local = mapOkapiT . Reader.local
     where
-      mapOkapiT :: (m (Either Failure a, Request) -> n (Either Failure b, Request)) -> OkapiT m a -> OkapiT n b
+      mapOkapiT :: (m (Either Failure a, State) -> n (Either Failure b, State)) -> OkapiT m a -> OkapiT n b
       mapOkapiT f okapiT = OkapiT . ExceptT.ExceptT . StateT.StateT $ f . StateT.runStateT (ExceptT.runExceptT $ unOkapiT okapiT)
   reader = Morph.lift . Reader.reader
+
+-- instance State.MonadState s m => State.MonadState s (OkapiT m) where
+--   get = Morph.lift State.get
+--   put = Morph.lift . State.put
 
 instance Morph.MonadTrans OkapiT where
   lift :: Monad m => m a -> OkapiT m a
@@ -160,5 +183,5 @@ type MonadOkapi m =
     Monad.MonadPlus m,
     IO.MonadIO m,
     Except.MonadError Failure m,
-    State.MonadState Request m
+    State.MonadState State m
   )
