@@ -48,6 +48,7 @@ module Okapi.Function
     ok,
     okLucid,
     connectEventSource,
+    noContent,
     -- FAILURE FUNCTIONS
     skip,
     error,
@@ -403,6 +404,9 @@ okJSON headers = respond 200 ([("Content-Type", "application/json")] <> headers)
 
 okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Result
 okLucid headers = ok headers . Lucid.renderBS . Lucid.toHtml
+
+noContent :: forall a m. MonadOkapi m => Headers -> m Result
+noContent headers = respond 204 headers ""
 
 -- TODO: Use response builder
 ok :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result

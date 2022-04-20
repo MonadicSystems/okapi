@@ -5,40 +5,65 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UnicodeSyntax #-}
 
 module Main where
 
-import Control.Applicative
-import Control.Concurrent
-import qualified Control.Concurrent.Chan.Unagi as Unagi
-import Control.Concurrent.STM
-import Control.Concurrent.STM.TVar --as TVar
-import Control.Monad.Extra
+--as TVar
+
 -- import Control.Monad.Trans.State
 
 -- import qualified Control.Monad.State.Class as State
 
+import Chess
+import Control.Applicative
+import Control.Concurrent
+import qualified Control.Concurrent.Chan.Unagi as Unagi
+import Control.Concurrent.STM
+import Control.Concurrent.STM.TVar
+import Control.Monad.Extra
 import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Trans.Reader hiding (ask, asks)
-import Data.ByteString.Lazy as ByteString
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text
 import GHC.Generics
 import Lucid
 import Lucid.Base
 import Lucid.Htmx
 import Okapi
+import Text.InterpolatedString.Perl6
 import Web.FormUrlEncoded
-import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.IORef
 
 type Okapi a = OkapiT App a
 
-newtype Match = Match (Text, Text) deriving (Ord)
+newtype App a = App {runApp :: ReaderT (IORef Env) IO a}
+  deriving newtype
+    ( Functor,
+      Applicative,
+      Monad,
+      MonadReader (IORef Env),
+      MonadIO
+    )
+
+data Env = Env
+  { envWaitPool :: WaitPool,
+    envConfirmedPool :: ConfirmedPool,
+    envMatches :: Set Match,
+    envEventSource :: EventSource
+  }
+
+newtype Match = Match (Text, Text) deriving (Show, Ord)
 
 instance Eq Match where
   (Match (p1, p2)) == (Match (p1', p2')) =
@@ -46,20 +71,7 @@ instance Eq Match where
 
 type WaitPool = Set Text
 
-data Env = Env
-  { envWaitPoolTVar :: TVar WaitPool,
-    envMatchesTVar :: TVar (Set Match),
-    envEventSourceTVar :: TVar EventSource
-  }
-
-newtype App a = App {runApp :: ReaderT Env IO a}
-  deriving newtype
-    ( Functor,
-      Applicative,
-      Monad,
-      MonadReader Env,
-      MonadIO
-    )
+type ConfirmedPool = Set Text
 
 type MonadApp m =
   ( Monad m,
@@ -70,24 +82,75 @@ type MonadApp m =
 main :: IO ()
 main = do
   print "Running chess app"
+  let
+    newEnv :: IO (IORef Env)
+    newEnv = do
+      eventSource <- Unagi.newChan
+      newIORef $ Env mempty mempty mempty eventSource
+
+    hoistApp :: IORef Env -> App a -> IO a
+    hoistApp env app = runReaderT (runApp app) env
+
   env <- newEnv
+  forkIO $ confirmer env
+  forkIO $ matchmaker env
   Okapi.runOkapi (hoistApp env) 3000 chess
 
-hoistApp :: Env -> App a -> IO a
-hoistApp env app = runReaderT (runApp app) env
+confirmer :: IORef Env -> IO ()
+confirmer env = do
+  let waitPoolTVar = envWaitPoolTVar env
+      matchesTVar = envMatchesTVar env
+      eventSourceTVar = envEventSourceTVar env
+  forever $ sendConfirmMessages waitPoolTVar eventSourceTVar
+  where
+    sendConfirmMessages :: TVar WaitPool -> TVar EventSource -> IO ()
+    sendConfirmMessages waitPoolTVar eventSourceTVar = do
+      threadDelay 100000000
+      waitPool <- readTVarIO waitPoolTVar
+      eventSource <- readTVarIO eventSourceTVar
+      if Set.null waitPool
+        then pure ()
+        else forM_ (Set.toList waitPool) (sendConfirmMessage eventSource)
 
-newEnv :: IO Env
-newEnv = do
-  envWaitPoolTVar <- newTVarIO mempty
-  envMatchesTVar <- newTVarIO mempty
-  eventSource <- Unagi.newChan
-  envEventSourceTVar <- newTVarIO eventSource
-  pure $ Env {..}
+    sendConfirmMessage :: EventSource -> Text -> IO ()
+    sendConfirmMessage eventSource playerName = sendEvent eventSource $ Event (Just $ "confirm-" <> playerName) Nothing ""
 
-chess :: Okapi Result
-chess = home <|> register <|> match -- <|> play
+matchmaker :: IORef Env -> IO ()
+matchmaker env = do
+  let confirmedPoolTVar = envConfirmedPoolTVar env
+      matchesTVar = envMatchesTVar env
+      eventSourceTVar = envEventSourceTVar env
+  forever $ tryNewMatch confirmedPoolTVar matchesTVar eventSourceTVar
+  where
+    tryNewMatch :: TVar ConfirmedPool -> TVar (Set Match) -> TVar EventSource -> IO ()
+    tryNewMatch confirmedPoolTVar matchesTVar eventSourceTVar = do
+      threadDelay 100000000
+      confirmedPool <- readTVarIO confirmedPoolTVar
+      eventSource <- readTVarIO eventSourceTVar
+      if Set.size confirmedPool >= 2 -- at least 2 players confirmed
+        then do
+          let p1 = Set.elemAt 0 confirmedPool -- get p1
+              p2 = Set.elemAt 1 confirmedPool -- get p2
+          atomically $ modifyTVar' confirmedPoolTVar $ Set.delete p1 -- delete p1 from pool
+          atomically $ modifyTVar' confirmedPoolTVar $ Set.delete p2 -- delete p2 from pool
+          atomically $ modifyTVar' matchesTVar $ Set.insert $ Match (p1, p2) -- add new match
+          sendStartEvent eventSource p1 p2
+        else pure ()
 
-data Home = Home
+sendStartEvent :: EventSource -> Text -> Text -> IO ()
+sendStartEvent eventSource p1Name p2Name = do
+  let event1 = Event (Just $ "start-" <> p1Name) Nothing $ renderStrict startingBoard
+      event2 = Event (Just $ "start-" <> p2Name) Nothing $ renderStrict startingBoard
+  sendEvent eventSource event1
+  sendEvent eventSource event2
+
+sendEvent :: EventSource -> Event -> IO ()
+sendEvent eventSource event = do
+  let (eventSourceIn, _eventSourceOut) = eventSource
+  liftIO $ Unagi.writeChan eventSourceIn event
+
+renderStrict :: ToHtml a => a -> BS.ByteString
+renderStrict = LBS.toStrict . renderBS . toHtmlRaw
 
 newtype Wrap a = Wrap a
 
@@ -99,7 +162,7 @@ instance ToHtml a => ToHtml (Wrap a) where
         meta_ [charset_ "UTF-8"]
         meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1.0"]
         title_ "Simple Chess"
-        link_ [rel_ "stylesheet", href_ "https://the.missing.style"]
+        link_ [id_ "style", rel_ "stylesheet", href_ "https://the.missing.style"]
         link_ [id_ "stylesheet-Fira-Sans", rel_ "stylesheet", href_ "https://fonts.googleapis.com/css2?family=Fira+Sans:ital,wght@0,400;0,700;1,400&amp;family=Source+Sans+3&amp;display=swap"]
         useHtmx
         useHtmxExtension "sse"
@@ -108,10 +171,12 @@ instance ToHtml a => ToHtml (Wrap a) where
           toHtml inner
   toHtmlRaw = toHtml
 
+data Home = Home
+
 instance ToHtml Home where
   toHtml Home = do
     h1_ [] "Hyperchess"
-    div_ [id_ "content"] $ do
+    div_ [] $ do
       ul_ [role_ "list", class_ "basicgrid crowded", style_ "--col-width: 15ch"] $ do
         li_ [class_ "missing-card"] $ do
           h4_ "👁️ Watch Game"
@@ -120,7 +185,7 @@ instance ToHtml Home where
               legend_ [] "Ongoing Matches"
               div_ [class_ "table rows"] $ do
                 p_ [] $ do
-                  select_ [id_ "match"] $ do
+                  select_ [id_ "stream"] $ do
                     option_ "John ⚔️ Bob"
                     option_ "Carol ⚔️ Bob"
                     option_ "John ⚔️ Bob"
@@ -141,100 +206,178 @@ instance ToHtml Home where
           li_ [class_ "missing-card"] $ do
             h4_ "🤔 How To Play"
             video_ [controls_ ""] ""
+      div_ [id_ "content"] "Hello"
   toHtmlRaw = toHtml
-
-is_ = makeAttribute "is"
 
 missingCard_ :: Term arg result => arg -> result
 missingCard_ = term "missing-card"
+
+instance ToHtml Board where
+  toHtml (Board state highlights) = do
+    -- link_ [id_ "style", rel_ "stylesheet", href_ "https://the.missing.style", hxSwapOob_ "true", hxSwap_ "outerHTML"]
+    table_ [class_ "board"] $ do
+      tr_ [] $ do
+        th_ [] ""
+        th_ [] "a"
+        th_ [] "b"
+        th_ [] "c"
+        th_ [] "d"
+        th_ [] "e"
+        th_ [] "f"
+        th_ [] "g"
+        th_ [] "h"
+      tr_ [] $ do
+        th_ [] "8"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+      tr_ [] $ do
+        th_ [] "7"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+      tr_ [] $ do
+        th_ [] "6"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+      tr_ [] $ do
+        th_ [] "5"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+      tr_ [] $ do
+        th_ [] "4"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+      tr_ [] $ do
+        th_ [] "3"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+      tr_ [] $ do
+        th_ [] "2"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+      tr_ [] $ do
+        th_ [] "1"
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+        td_ [] ""
+  toHtmlRaw = toHtml
+
+addPlayerToWaitPool :: TVar WaitPool -> Text -> IO ()
+addPlayerToWaitPool waitPoolTVar name = atomically $ modifyTVar' waitPoolTVar $ Set.insert name
+
+addPlayerToConfirmedPool :: TVar ConfirmedPool -> Text -> IO ()
+addPlayerToConfirmedPool confirmedPoolTVar name = atomically $ modifyTVar' confirmedPoolTVar $ Set.insert name
+
+data JoinedPool = JoinedPool Text
+
+instance ToHtml JoinedPool where
+  toHtml (JoinedPool name) = do
+    div_ [hxExt_ "sse", sseConnect_ "/stream"] $ do
+      div_ [hxGet_ $ "/confirm?" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name] ""
+      div_ [sseSwap_ ["start-" <> name]] $ do
+        h4_ $ toHtml $ "Hello, " <> name <> ". Finding an opponent..."
+  toHtmlRaw = toHtml
+
+-- data Confirmed = Confirmed Text
+
+-- instance ToHtml Confirmed where
+--   toHtml (Confirmed name) = do
+--     div_ [sseSwap_ ["start-"<>name]] $ do
+--       h4_ $ toHtml $ ("Connection confirmed. I'm finding you an opponent now..." :: Text)
+--   toHtmlRaw = toHtml
+
+sseConnect_ :: Text -> Attribute
+sseConnect_ = makeAttribute "sse-connect"
+
+sseSwap_ :: [Text] -> Attribute
+sseSwap_ messageNames = makeAttribute "sse-swap" $ Data.Text.intercalate "," messageNames
+
+chess :: Okapi Result
+chess = home <|> register <|> stream <|> confirm
 
 home :: Okapi Result
 home = do
   get
   okLucid [] $ Wrap Home
 
-data Player = Player {playerName :: Text} deriving (Eq, Show, Generic, FromForm)
-
 register :: Okapi Result
 register = do
   Okapi.post
   Okapi.seg "register"
-  Player {..} <- bodyForm @Player
+  Player {..} <- bodyForm
   waitPoolTVar <- asks envWaitPoolTVar
   liftIO $ addPlayerToWaitPool waitPoolTVar playerName
-  okLucid [] $ Joined playerName
+  okLucid [] $ JoinedPool playerName
 
-addPlayerToWaitPool :: TVar WaitPool -> Text -> IO ()
-addPlayerToWaitPool waitPoolTVar name = atomically $ modifyTVar' waitPoolTVar $ Set.insert name
+data Player = Player {playerName :: Text} deriving (Eq, Show, Generic, FromForm)
 
-tryToMakeNewMatch :: TVar WaitPool -> TVar (Set Match) -> Text -> IO Bool
-tryToMakeNewMatch waitPoolTVar matchesTVar name = do
-  waitPool <- atomically . readTVar $ waitPoolTVar
-  print $ "Current player pool: " <> show waitPool
-  atomically $ do
-    -- waitPool <- readTVar waitPoolTVar
-    if Set.size waitPool >= 2 -- at least 2 players
-      then do
-        modifyTVar' waitPoolTVar $ Set.delete name -- delete p1 from pool
-        waitPool' <- readTVar waitPoolTVar -- get pool without p1
-        let opponent = Set.elemAt 0 waitPool' -- get p2
-        modifyTVar' waitPoolTVar $ Set.delete opponent -- delete p2 from pool
-        modifyTVar' matchesTVar $ Set.insert $ Match (name, opponent) -- add new match
-        pure True
-      else do
-        pure False -- return nothing
-
-writeEventSource :: TVar EventSource -> Event -> IO ()
-writeEventSource eventSourceTVar event = do
-  (eventSourceIn, _eventSourceOut) <- liftIO . readTVarIO $ eventSourceTVar
-  liftIO $ Unagi.writeChan eventSourceIn event
-
-data Joined = Joined Text
-
-sseConnect_ = makeAttribute "sse-connect"
-
-sseSwap_ messageNames = makeAttribute "sse-swap" $ Data.Text.intercalate "," messageNames
-
-instance ToHtml Joined where
-  toHtml (Joined name) = do
-    div_ [hxExt_ "sse", sseConnect_ $ "/match?player=" <> name, sseSwap_ ["start-" <> name, "looking-" <> name], hxTarget_ "#content"] $ do
-      h4_ $ toHtml $ "Hello, " <> name <> ". I'm finding you a worthy opponent..."
-  toHtmlRaw = toHtml
-
-match :: Okapi Result
-match = do
+stream :: Okapi Result
+stream = do
   get
-  seg "match"
-  playerName <- queryParam "player"
+  seg "stream"
   eventSourceTVar <- asks envEventSourceTVar
-  waitPoolTVar <- asks envWaitPoolTVar
-  matchesTVar <- asks envMatchesTVar
-  let
-    succeed :: IO ()
-    succeed = do
-      -- print "Sending start event"
-      let event = Event (Just $ "start-" <> playerName) Nothing "<h1>Match Started</h1>"
-      writeEventSource eventSourceTVar event
-    loop :: IO ()
-    loop = do
-      -- liftIO $ print "Sending looking event"
-      let event = Event (Just $ "looking-" <> playerName) Nothing "<h1>Looking</h1>"
-      writeEventSource eventSourceTVar event
-      ifM (tryToMakeNewMatch waitPoolTVar matchesTVar playerName) succeed loop
-  liftIO $ forkIO $
-    ifM (tryToMakeNewMatch waitPoolTVar matchesTVar playerName)
-      succeed
-      loop
   eventSource <- liftIO . readTVarIO $ eventSourceTVar
   connectEventSource eventSource
 
-play :: Okapi Result
-play = do
-  Okapi.seg "play"
-  playerID <- segParam @Int
-  ok [] ""
+confirm :: Okapi Result
+confirm = do
+  Okapi.seg "confirm"
+  playerName <- queryParam "player"
+  confirmedPoolTVar <- asks envConfirmedPoolTVar
+  waitPoolTVar <- asks envWaitPoolTVar
+  liftIO $ atomically $ modifyTVar' waitPoolTVar $ Set.delete playerName
+  liftIO $ addPlayerToConfirmedPool confirmedPoolTVar playerName
+  noContent []
 
-authorize = undefined --do
+authorize = undefined
+
+-- do
 --   authHeaderValue <- Okapi.auth
 --   jwtSecret <- grab @Text
 --   case extractToken authHeaderValue >>= verifyToken jwtSecret of

@@ -125,6 +125,7 @@ executable calc-no-do-exe
 executable chess-exe
   main-is: Main.hs
   other-modules:
+      Chess
       Paths_okapi
   hs-source-dirs:
       examples/chess
@@ -138,6 +139,7 @@ executable chess-exe
     , extra
     , http-api-data
     , http-types
+    , interpolatedstring-perl6
     , lucid
     , lucid-htmx
     , mmorph

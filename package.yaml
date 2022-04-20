@@ -103,6 +103,7 @@ executables:
     - aeson
     - bytestring
     - extra
+    - interpolatedstring-perl6
     - http-api-data 
     - lucid
     - lucid-htmx
