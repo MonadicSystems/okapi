@@ -148,6 +148,7 @@ executable chess-exe
     , random
     , stm
     , text
+    , time
     , transformers
     , unagi-chan
     , uuid

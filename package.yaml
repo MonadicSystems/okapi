@@ -108,6 +108,7 @@ executables:
     - lucid
     - lucid-htmx
     - text
+    - time
     - stm
     - unagi-chan
     - containers

@@ -44,15 +44,16 @@ import Okapi
 import Text.InterpolatedString.Perl6
 import Web.FormUrlEncoded
 import Data.IORef
+import Data.Time
 
 type Okapi a = OkapiT App a
 
-newtype App a = App {runApp :: ReaderT (IORef Env) IO a}
+newtype App a = App {runApp :: ReaderT (TVar Env) IO a}
   deriving newtype
     ( Functor,
       Applicative,
       Monad,
-      MonadReader (IORef Env),
+      MonadReader (TVar Env),
       MonadIO
     )
 
@@ -69,9 +70,9 @@ instance Eq Match where
   (Match (p1, p2)) == (Match (p1', p2')) =
     p1 == p1' && p2 == p2' || p1 == p2' && p2 == p1'
 
-type WaitPool = Set Text
+newtype WaitPool = WaitPool { unWaitPool :: Set Text } -- todo: Add timestamp
 
-type ConfirmedPool = Set Text
+newtype ConfirmedPool = ConfirmedPool { unConfirmedPool :: Set Text }
 
 type MonadApp m =
   ( Monad m,
@@ -83,59 +84,96 @@ main :: IO ()
 main = do
   print "Running chess app"
   let
-    newEnv :: IO (IORef Env)
-    newEnv = do
+    newEnvTVar :: IO (TVar Env)
+    newEnvTVar = do
       eventSource <- Unagi.newChan
-      newIORef $ Env mempty mempty mempty eventSource
+      newTVarIO $ Env (WaitPool mempty) (ConfirmedPool mempty) mempty eventSource
 
-    hoistApp :: IORef Env -> App a -> IO a
-    hoistApp env app = runReaderT (runApp app) env
+    hoistApp :: TVar Env -> App a -> IO a
+    hoistApp envTVar app = runReaderT (runApp app) envTVar
 
-  env <- newEnv
-  forkIO $ confirmer env
-  forkIO $ matchmaker env
-  Okapi.runOkapi (hoistApp env) 3000 chess
+  envTVar <- newEnvTVar
+  workerID <- forkIO $ forever $ do
+    threadDelay 1000000
+    confirmer envTVar
+    matchmaker envTVar
+  Okapi.runOkapi (hoistApp envTVar) 3000 chess
+  killThread workerID
 
-confirmer :: IORef Env -> IO ()
-confirmer env = do
-  let waitPoolTVar = envWaitPoolTVar env
-      matchesTVar = envMatchesTVar env
-      eventSourceTVar = envEventSourceTVar env
-  forever $ sendConfirmMessages waitPoolTVar eventSourceTVar
+-- readIORef :: IORef a -> IO a
+
+readFromEnvTVar :: (Env -> a) -> TVar Env -> STM a
+readFromEnvTVar f envTVar = do
+  env <- readTVar envTVar
+  pure $ f env
+
+readWaitPool :: TVar Env -> STM WaitPool
+readWaitPool = readFromEnvTVar envWaitPool
+
+readConfirmedPool :: TVar Env -> STM ConfirmedPool
+readConfirmedPool = readFromEnvTVar envConfirmedPool
+
+readMatches :: TVar Env -> STM (Set Match)
+readMatches = readFromEnvTVar envMatches
+
+readEventSource :: TVar Env -> STM EventSource
+readEventSource = readFromEnvTVar envEventSource
+
+-- atomicModifyIORef' :: IORef a -> (a -> (a, b)) -> IO b
+
+modfyEnvTVar :: (Env -> Env) -> TVar Env -> STM ()
+modfyEnvTVar f envTVar = modifyTVar' envTVar f
+
+modifyWaitPool :: (WaitPool -> WaitPool) -> TVar Env -> STM ()
+modifyWaitPool f = modfyEnvTVar (\env -> env { envWaitPool = f $ envWaitPool env })
+
+modifyConfirmedPool :: (ConfirmedPool -> ConfirmedPool) -> TVar Env -> STM ()
+modifyConfirmedPool f = modfyEnvTVar (\env -> env { envConfirmedPool = f $ envConfirmedPool env })
+
+modifyMatches :: (Set Match -> Set Match) -> TVar Env -> STM ()
+modifyMatches f = modfyEnvTVar (\env -> env { envMatches = f $ envMatches env })
+
+-- atomicWriteIORef :: IORef a -> a -> IO ()
+
+confirmer :: TVar Env -> IO ()
+confirmer = sendConfirmMessages
   where
-    sendConfirmMessages :: TVar WaitPool -> TVar EventSource -> IO ()
-    sendConfirmMessages waitPoolTVar eventSourceTVar = do
-      threadDelay 100000000
-      waitPool <- readTVarIO waitPoolTVar
-      eventSource <- readTVarIO eventSourceTVar
+    sendConfirmMessages :: TVar Env -> IO ()
+    sendConfirmMessages envRef = do
+      -- threadDelay 100000000
+      waitPool <- unWaitPool <$> atomically (readWaitPool envRef)
+      -- print $ "Wait pool size: " <> (show $ Set.size waitPool)
       if Set.null waitPool
-        then pure ()
-        else forM_ (Set.toList waitPool) (sendConfirmMessage eventSource)
+        then pure () -- print "Wait pool is empty"
+        else do
+          -- print "Sending confirm messages"
+          eventSource <- atomically $ readEventSource envRef
+          -- waitPool' <- readWaitPool envRef
+          forM_ (Set.toList waitPool) (sendConfirmMessage eventSource)
 
     sendConfirmMessage :: EventSource -> Text -> IO ()
     sendConfirmMessage eventSource playerName = sendEvent eventSource $ Event (Just $ "confirm-" <> playerName) Nothing ""
 
-matchmaker :: IORef Env -> IO ()
-matchmaker env = do
-  let confirmedPoolTVar = envConfirmedPoolTVar env
-      matchesTVar = envMatchesTVar env
-      eventSourceTVar = envEventSourceTVar env
-  forever $ tryNewMatch confirmedPoolTVar matchesTVar eventSourceTVar
+matchmaker :: TVar Env -> IO ()
+matchmaker = tryNewMatch
   where
-    tryNewMatch :: TVar ConfirmedPool -> TVar (Set Match) -> TVar EventSource -> IO ()
-    tryNewMatch confirmedPoolTVar matchesTVar eventSourceTVar = do
-      threadDelay 100000000
-      confirmedPool <- readTVarIO confirmedPoolTVar
-      eventSource <- readTVarIO eventSourceTVar
+    tryNewMatch :: TVar Env -> IO ()
+    tryNewMatch envRef = do
+      -- threadDelay 100000000
+      -- print "Starting matchmaker"
+      confirmedPool <- unConfirmedPool <$> atomically (readConfirmedPool envRef)
+      -- print $ "Confirm pool size: " <> (show $ Set.size confirmedPool)
       if Set.size confirmedPool >= 2 -- at least 2 players confirmed
         then do
+          -- print "Starting match"
           let p1 = Set.elemAt 0 confirmedPool -- get p1
               p2 = Set.elemAt 1 confirmedPool -- get p2
-          atomically $ modifyTVar' confirmedPoolTVar $ Set.delete p1 -- delete p1 from pool
-          atomically $ modifyTVar' confirmedPoolTVar $ Set.delete p2 -- delete p2 from pool
-          atomically $ modifyTVar' matchesTVar $ Set.insert $ Match (p1, p2) -- add new match
+          atomically $ modifyConfirmedPool (ConfirmedPool . Set.delete p1 . unConfirmedPool) envRef -- delete p1 from pool
+          atomically $ modifyConfirmedPool (ConfirmedPool . Set.delete p2 . unConfirmedPool) envRef -- delete p2 from pool
+          atomically $ modifyMatches (Set.insert $ Match (p1, p2)) envRef -- add new match
+          eventSource <- atomically $ readEventSource envRef
           sendStartEvent eventSource p1 p2
-        else pure ()
+        else pure () -- print "Confirmed pool is less than 2"
 
 sendStartEvent :: EventSource -> Text -> Text -> IO ()
 sendStartEvent eventSource p1Name p2Name = do
@@ -308,18 +346,18 @@ instance ToHtml Board where
         td_ [] ""
   toHtmlRaw = toHtml
 
-addPlayerToWaitPool :: TVar WaitPool -> Text -> IO ()
-addPlayerToWaitPool waitPoolTVar name = atomically $ modifyTVar' waitPoolTVar $ Set.insert name
+addPlayerToWaitPool :: TVar Env -> Text -> STM ()
+addPlayerToWaitPool envRef playerName = modifyWaitPool (WaitPool . Set.insert playerName . unWaitPool) envRef
 
-addPlayerToConfirmedPool :: TVar ConfirmedPool -> Text -> IO ()
-addPlayerToConfirmedPool confirmedPoolTVar name = atomically $ modifyTVar' confirmedPoolTVar $ Set.insert name
+addPlayerToConfirmedPool :: TVar Env -> Text -> STM ()
+addPlayerToConfirmedPool envRef playerName = modifyConfirmedPool (ConfirmedPool . Set.insert playerName . unConfirmedPool) envRef
 
 data JoinedPool = JoinedPool Text
 
 instance ToHtml JoinedPool where
   toHtml (JoinedPool name) = do
     div_ [hxExt_ "sse", sseConnect_ "/stream"] $ do
-      div_ [hxGet_ $ "/confirm?" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name] ""
+      div_ [hxGet_ $ "/confirm?player=" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name] ""
       div_ [sseSwap_ ["start-" <> name]] $ do
         h4_ $ toHtml $ "Hello, " <> name <> ". Finding an opponent..."
   toHtmlRaw = toHtml
@@ -351,8 +389,8 @@ register = do
   Okapi.post
   Okapi.seg "register"
   Player {..} <- bodyForm
-  waitPoolTVar <- asks envWaitPoolTVar
-  liftIO $ addPlayerToWaitPool waitPoolTVar playerName
+  envRef <- ask
+  liftIO $ atomically $ addPlayerToWaitPool envRef playerName
   okLucid [] $ JoinedPool playerName
 
 data Player = Player {playerName :: Text} deriving (Eq, Show, Generic, FromForm)
@@ -361,25 +399,25 @@ stream :: Okapi Result
 stream = do
   get
   seg "stream"
-  eventSourceTVar <- asks envEventSourceTVar
-  eventSource <- liftIO . readTVarIO $ eventSourceTVar
+  envRef <- ask
+  eventSource <- liftIO $ atomically $ readEventSource envRef
   connectEventSource eventSource
 
 confirm :: Okapi Result
 confirm = do
+  get
   Okapi.seg "confirm"
   playerName <- queryParam "player"
-  confirmedPoolTVar <- asks envConfirmedPoolTVar
-  waitPoolTVar <- asks envWaitPoolTVar
-  liftIO $ atomically $ modifyTVar' waitPoolTVar $ Set.delete playerName
-  liftIO $ addPlayerToConfirmedPool confirmedPoolTVar playerName
+  envRef <- ask
+  liftIO $ atomically $ modifyWaitPool (WaitPool . Set.delete playerName . unWaitPool) envRef
+  liftIO $ atomically $ addPlayerToConfirmedPool envRef playerName
   noContent []
 
 authorize = undefined
 
 -- do
 --   authHeaderValue <- Okapi.auth
---   jwtSecret <- grab @Text
+--   jwtSecret <- read @Text
 --   case extractToken authHeaderValue >>= verifyToken jwtSecret of
 --     Nothing -> Okapi.error401 [] ""
 --     Just userID -> pure userID
