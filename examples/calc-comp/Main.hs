@@ -38,7 +38,6 @@ divOp =
               else okJSON [] $ DivResult {answer = x `div` y, remainder = x `mod` y}
         )
 
-getArgs :: Okapi (Int, Int)
 getArgs =
   [(x, y) | x <- segParam, y <- segParam]
     <|> [(x, y) | x <- queryParam "x", y <- queryParam "y"]
