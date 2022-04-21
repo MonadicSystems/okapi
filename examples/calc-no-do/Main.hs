@@ -28,7 +28,15 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp = seg "div" >> (getArgs >>= (\(x, y) -> if y == 0 then error403 [] "Forbidden" else okJSON [] $ DivResult (x `div` y) (x `mod` y)))
+divOp =
+  seg "div"
+    >> ( getArgs
+           >>= ( \(x, y) ->
+                   if y == 0
+                     then error403 [] "Forbidden"
+                     else okJSON [] $ DivResult (x `div` y) (x `mod` y)
+               )
+       )
 
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where

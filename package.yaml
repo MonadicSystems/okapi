@@ -63,6 +63,15 @@ executables:
     - time
     - vector
     - profunctors
+  calc-comp:
+    main:                Main.hs
+    source-dirs:         examples/calc-comp
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - okapi
   calc-exe:
     main:                Main.hs
     source-dirs:         examples/calc
