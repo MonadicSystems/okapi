@@ -50,7 +50,7 @@ data File
   | FileF
   | FileG
   | FileH
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Enum)
 
 data Rank
   = Rank1
@@ -61,7 +61,7 @@ data Rank
   | Rank6
   | Rank7
   | Rank8
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Enum)
 
 type Position = (File, Rank)
 

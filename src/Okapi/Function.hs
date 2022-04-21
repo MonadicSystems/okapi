@@ -92,6 +92,7 @@ import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WarpTLS as Warp
 import qualified Network.Wai.Internal as Wai
+import Network.Wai.Middleware.Gzip (gzip, def)
 import qualified Okapi.EventSource as EventSource
 import Okapi.Type
   ( Failure (Error, Skip),
@@ -128,7 +129,7 @@ makeOkapiApp hoister okapiT waiRequest respond = do
     Left Skip -> respond $ Wai.responseLBS HTTP.status404 [] "Not Found"
     Left (Error response) -> respond . responseToWaiResponse $ response
     Right (ResultResponse response) -> respond . responseToWaiResponse $ response
-    Right (ResultEventSource eventSource) -> EventSource.eventSourceAppUnagiChan eventSource waiRequest respond
+    Right (ResultEventSource eventSource) -> (gzip def $ EventSource.eventSourceAppUnagiChan eventSource) waiRequest respond
 
 -- Right (ResultJob job) -> (\_ _ -> do Concurrent.forkIO job; pure Wai.ResponseReceived)
 

@@ -3,12 +3,14 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
 module Main where
@@ -31,20 +33,21 @@ import Control.Monad.Reader.Class
 import Control.Monad.Trans.Reader hiding (ask, asks)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
+import Data.IORef
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text
+import Data.Time
 import GHC.Generics
 import Lucid
 import Lucid.Base
 import Lucid.Htmx
 import Okapi
+import qualified SlaveThread
 import Text.InterpolatedString.Perl6
 import Web.FormUrlEncoded
-import Data.IORef
-import Data.Time
 
 type Okapi a = OkapiT App a
 
@@ -70,9 +73,9 @@ instance Eq Match where
   (Match (p1, p2)) == (Match (p1', p2')) =
     p1 == p1' && p2 == p2' || p1 == p2' && p2 == p1'
 
-newtype WaitPool = WaitPool { unWaitPool :: Set Text } -- todo: Add timestamp
+newtype WaitPool = WaitPool {unWaitPool :: Set Text} -- todo: Add timestamp
 
-newtype ConfirmedPool = ConfirmedPool { unConfirmedPool :: Set Text }
+newtype ConfirmedPool = ConfirmedPool {unConfirmedPool :: Set Text}
 
 type MonadApp m =
   ( Monad m,
@@ -83,22 +86,22 @@ type MonadApp m =
 main :: IO ()
 main = do
   print "Running chess app"
-  let
-    newEnvTVar :: IO (TVar Env)
-    newEnvTVar = do
-      eventSource <- Unagi.newChan
-      newTVarIO $ Env (WaitPool mempty) (ConfirmedPool mempty) mempty eventSource
+  let newEnvTVar :: IO (TVar Env)
+      newEnvTVar = do
+        eventSource <- Unagi.newChan
+        newTVarIO $ Env (WaitPool mempty) (ConfirmedPool mempty) mempty eventSource
 
-    hoistApp :: TVar Env -> App a -> IO a
-    hoistApp envTVar app = runReaderT (runApp app) envTVar
+      hoistApp :: TVar Env -> App a -> IO a
+      hoistApp envTVar app = runReaderT (runApp app) envTVar
 
   envTVar <- newEnvTVar
-  workerID <- forkIO $ forever $ do
-    threadDelay 1000000
-    confirmer envTVar
-    matchmaker envTVar
+  slaveThreadID <- SlaveThread.fork $
+    forever $ do
+      threadDelay 1000000
+      confirmer envTVar
+      matchmaker envTVar
   Okapi.runOkapi (hoistApp envTVar) 3000 chess
-  killThread workerID
+  killThread slaveThreadID
 
 -- readIORef :: IORef a -> IO a
 
@@ -125,13 +128,13 @@ modfyEnvTVar :: (Env -> Env) -> TVar Env -> STM ()
 modfyEnvTVar f envTVar = modifyTVar' envTVar f
 
 modifyWaitPool :: (WaitPool -> WaitPool) -> TVar Env -> STM ()
-modifyWaitPool f = modfyEnvTVar (\env -> env { envWaitPool = f $ envWaitPool env })
+modifyWaitPool f = modfyEnvTVar (\env -> env {envWaitPool = f $ envWaitPool env})
 
 modifyConfirmedPool :: (ConfirmedPool -> ConfirmedPool) -> TVar Env -> STM ()
-modifyConfirmedPool f = modfyEnvTVar (\env -> env { envConfirmedPool = f $ envConfirmedPool env })
+modifyConfirmedPool f = modfyEnvTVar (\env -> env {envConfirmedPool = f $ envConfirmedPool env})
 
 modifyMatches :: (Set Match -> Set Match) -> TVar Env -> STM ()
-modifyMatches f = modfyEnvTVar (\env -> env { envMatches = f $ envMatches env })
+modifyMatches f = modfyEnvTVar (\env -> env {envMatches = f $ envMatches env})
 
 -- atomicWriteIORef :: IORef a -> a -> IO ()
 
@@ -195,17 +198,16 @@ newtype Wrap a = Wrap a
 instance ToHtml a => ToHtml (Wrap a) where
   toHtml (Wrap inner) = do
     doctype_
-    html_ [lang_ "", style_ "--main-font: \"Fira Sans\", system-ui; --display-font: \"Fira Sans\", system-ui;"] $ do
+    html_ $ do
       head_ $ do
         meta_ [charset_ "UTF-8"]
         meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1.0"]
         title_ "Simple Chess"
-        link_ [id_ "style", rel_ "stylesheet", href_ "https://the.missing.style"]
-        link_ [id_ "stylesheet-Fira-Sans", rel_ "stylesheet", href_ "https://fonts.googleapis.com/css2?family=Fira+Sans:ital,wght@0,400;0,700;1,400&amp;family=Source+Sans+3&amp;display=swap"]
+        script_ [src_ "https://cdn.tailwindcss.com"] ("" :: Text)
         useHtmx
         useHtmxExtension "sse"
       body_ $ do
-        main_ [] $ do
+        main_ [class_ "container mx-auto px-40 my-auto"] $ do
           toHtml inner
   toHtmlRaw = toHtml
 
@@ -215,136 +217,164 @@ instance ToHtml Home where
   toHtml Home = do
     h1_ [] "Hyperchess"
     div_ [] $ do
-      ul_ [role_ "list", class_ "basicgrid crowded", style_ "--col-width: 15ch"] $ do
-        li_ [class_ "missing-card"] $ do
+      div_ [class_ "grid grid-cols-3 gap-10"] $ do
+        div_ [class_ "rounded-md flex flex-col"] $ do
           h4_ "👁️ Watch Game"
-          form_ [] $ do
-            fieldset_ [id_ "forms__input"] $ do
-              legend_ [] "Ongoing Matches"
-              div_ [class_ "table rows"] $ do
-                p_ [] $ do
-                  select_ [id_ "stream"] $ do
-                    option_ "John ⚔️ Bob"
-                    option_ "Carol ⚔️ Bob"
-                    option_ "John ⚔️ Bob"
-                  input_ [type_ "submit", value_ "Watch Match", style_ "margin-top: 2ch"]
-        li_ [class_ "missing-card"] $ do
+          form_ [class_ "flex flex-col"] $ do
+            select_ [id_ "stream"] $ do
+              option_ "John ⚔️ Bob"
+              option_ "Carol ⚔️ Bob"
+              option_ "John ⚔️ Bob"
+            button_ [type_ "submit", class_ "px-4 py-2 bg-blue-200 text-white"] "Watch Match"
+        div_ [class_ "rounded-md flex flex-col"] $ do
           h4_ "♟️ Play Game"
-          form_ [hxPost_ "/register", hxTarget_ "#content"] $ do
-            fieldset_ [id_ "forms__input"] $ do
-              legend_ [] "Register"
-              div_ [class_ "table rows"] $ do
-                p_ [] $ do
-                  input_ [name_ "playerName", type_ "text", placeholder_ "Name"]
-                  button_
-                    [ style_ "margin-top: 2ch",
-                      type_ "submit"
-                    ]
-                    "Join Match"
-          li_ [class_ "missing-card"] $ do
-            h4_ "🤔 How To Play"
-            video_ [controls_ ""] ""
+          form_ [hxPost_ "/register", hxTarget_ "#content", class_ "flex flex-col"] $ do
+            input_ [name_ "playerName", type_ "text", placeholder_ "Name"]
+            button_
+              [ type_ "submit",
+                class_ "px-4 py-2 bg-blue-200 text-white"
+              ]
+              "Join Match"
+        div_ [class_ "rounded-md flex flex-col"] $ do
+          h4_ "🤔 How To Play"
+          ul_ [] $ do
+            li_ [] "Learn chess"
+            li_ [] "Register"
+            li_ [] "Start playing"
       div_ [id_ "content"] "Hello"
   toHtmlRaw = toHtml
 
 missingCard_ :: Term arg result => arg -> result
 missingCard_ = term "missing-card"
 
+positionToXY :: Position -> (Int, Int)
+positionToXY (file, rank) = (fromEnum file, 9 - fromEnum rank)
+
+xyToPosition :: (Int, Int) -> Position
+xyToPosition (x, y) = (toEnum x, toEnum (9 - y))
+
+instance ToHtml Piece where
+  toHtml (White, Pawn) = "♙"
+  toHtml (Black, Pawn) = "♟"
+  toHtml (White, Knight) = "♘"
+  toHtml (Black, Knight) = "♞"
+  toHtml (White, Rook) = "♖"
+  toHtml (Black, Rook) = "♜"
+  toHtml (White, Bishop) = "♗"
+  toHtml (Black, Bishop) = "♝"
+  toHtml (White, Queen) = "♕"
+  toHtml (Black, Queen) = "♛"
+  toHtml (White, King) = "♔"
+  toHtml (Black, King) = "♚"
+  toHtmlRaw = toHtml
+
 instance ToHtml Board where
   toHtml (Board state highlights) = do
     -- link_ [id_ "style", rel_ "stylesheet", href_ "https://the.missing.style", hxSwapOob_ "true", hxSwap_ "outerHTML"]
-    div_ [] $
-      table_ [class_ "chess-board"] $ do
-        tr_ [] $ do
-          th_ [] ""
-          th_ [] "a"
-          th_ [] "b"
-          th_ [] "c"
-          th_ [] "d"
-          th_ [] "e"
-          th_ [] "f"
-          th_ [] "g"
-          th_ [] "h"
-        tr_ [] $ do
-          th_ [] "8"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-        tr_ [] $ do
-          th_ [] "7"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-        tr_ [] $ do
-          th_ [] "6"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-        tr_ [] $ do
-          th_ [] "5"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-        tr_ [] $ do
-          th_ [] "4"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-        tr_ [] $ do
-          th_ [] "3"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-        tr_ [] $ do
-          th_ [] "2"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-        tr_ [] $ do
-          th_ [] "1"
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
-          td_ [] ""
+    div_ [class_ "grid grid-cols-8 grid-rows-8 gap-0 h-full w-full"] $ do
+      let blackSquareClass_ = class_ "flex items-center justify-center bg-gray-700"
+          whiteSquareClass_ = class_ "flex items-center justify-center bg-gray-200"
+      forM_
+        ([(x, y) | x <- [1 .. 8], y <- [1 .. 8]])
+        ( \(n, m) ->
+            div_
+              [ if odd n
+                  then (if odd m then whiteSquareClass_ else blackSquareClass_)
+                  else (if odd m then blackSquareClass_ else whiteSquareClass_)
+              ]
+              $ maybe "" toHtml (Map.lookup (xyToPosition (n, m)) state)
+        )
+
+  -- tr_ [] $ do
+  --   th_ [] ""
+  --   th_ [] "a"
+  --   th_ [] "b"
+  --   th_ [] "c"
+  --   th_ [] "d"
+  --   th_ [] "e"
+  --   th_ [] "f"
+  --   th_ [] "g"
+  --   th_ [] "h"
+  -- tr_ [] $ do
+  --   th_ [] "8"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  -- tr_ [] $ do
+  --   th_ [] "7"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  -- tr_ [] $ do
+  --   th_ [] "6"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  -- tr_ [] $ do
+  --   th_ [] "5"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  -- tr_ [] $ do
+  --   th_ [] "4"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  -- tr_ [] $ do
+  --   th_ [] "3"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  -- tr_ [] $ do
+  --   th_ [] "2"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  -- tr_ [] $ do
+  --   th_ [] "1"
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
+  --   td_ [] ""
   toHtmlRaw = toHtml
 
 addPlayerToWaitPool :: TVar Env -> Text -> STM ()
@@ -359,7 +389,7 @@ instance ToHtml JoinedPool where
   toHtml (JoinedPool name) = do
     div_ [hxExt_ "sse", sseConnect_ "/stream"] $ do
       div_ [hxGet_ $ "/confirm?player=" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name] ""
-      div_ [sseSwap_ ["start-" <> name]] $ do
+      div_ [sseSwap_ ["start-" <> name], class_ "w-1/2 aspect-square container mx-auto"] $ do
         h4_ $ toHtml $ "Hello, " <> name <> ". Finding an opponent..."
   toHtmlRaw = toHtml
 

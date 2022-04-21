@@ -109,6 +109,7 @@ executables:
     - lucid-htmx
     - text
     - time
+    - slave-thread
     - stm
     - unagi-chan
     - containers

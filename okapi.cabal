@@ -146,6 +146,7 @@ executable chess-exe
     , mtl
     , okapi
     , random
+    , slave-thread
     , stm
     , text
     , time
