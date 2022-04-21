@@ -45,10 +45,12 @@ module Okapi.Function
     -- RESPOND FUNCTIONS
     okPlainText,
     okJSON,
-    ok,
+    okHTML,
     okLucid,
     connectEventSource,
     noContent,
+    file,
+    okFile,
     -- FAILURE FUNCTIONS
     skip,
     error,
@@ -102,6 +104,7 @@ import Okapi.Type
     QueryItem,
     Request (..),
     Response (..),
+    File (..),
     Result (..),
     State (..),
   )
@@ -123,15 +126,13 @@ runOkapiTLS hoister tlsSettings settings okapiT = do
 
 makeOkapiApp :: Monad m => (forall a. m a -> IO a) -> OkapiT m Result -> Wai.Application
 makeOkapiApp hoister okapiT waiRequest respond = do
-  -- eventSourcePoolTVar <- TVar.newTVarIO EventSource.emptyEventSourcePool
   (eitherFailureOrResult, _state) <- (StateT.runStateT . ExceptT.runExceptT . unOkapiT $ Morph.hoist hoister okapiT) (waiRequestToState {-eventSourcePoolTVar-} waiRequest)
   case eitherFailureOrResult of
     Left Skip -> respond $ Wai.responseLBS HTTP.status404 [] "Not Found"
     Left (Error response) -> respond . responseToWaiResponse $ response
     Right (ResultResponse response) -> respond . responseToWaiResponse $ response
+    Right (ResultFile file) -> respond . fileToWaiResponse $ file
     Right (ResultEventSource eventSource) -> (gzip def $ EventSource.eventSourceAppUnagiChan eventSource) waiRequest respond
-
--- Right (ResultJob job) -> (\_ _ -> do Concurrent.forkIO job; pure Wai.ResponseReceived)
 
 waiRequestToState :: Wai.Request -> State
 waiRequestToState waiRequest =
@@ -146,23 +147,11 @@ waiRequestToState waiRequest =
       stateRequestBodyParsed = False
    in State {..}
 
-{-
-waiRequestToState :: TVar.TVar EventSource.EventSourcePool -> Wai.Request -> State
-waiRequestToState stateEventSourcePoolTVar waiRequest =
-  let requestMethod = Wai.requestMethod waiRequest
-      requestPath = Wai.pathInfo waiRequest
-      requestQuery = HTTP.queryToQueryText $ Wai.queryString waiRequest
-      requestBody = Wai.strictRequestBody waiRequest
-      requestHeaders = Wai.requestHeaders waiRequest
-      requestVault = Wai.vault waiRequest
-      stateRequest = Request {..}
-      stateRequestMethodParsed = False
-      stateRequestBodyParsed = False
-   in State {..}
--}
-
 responseToWaiResponse :: Response -> Wai.Response
 responseToWaiResponse Response {..} = Wai.responseLBS (toEnum $ fromEnum responseStatus) responseHeaders responseBody
+
+fileToWaiResponse :: File -> Wai.Response
+fileToWaiResponse File {..} = Wai.responseFile (toEnum $ fromEnum fileStatus) fileHeaders filePath Nothing
 
 -- PARSING METHODS
 
@@ -395,39 +384,9 @@ bodyForm = do
               State.put $ bodyParsed state
               pure value
 
+-- TODO: bodyFile functions for file uploads to server
+
 -- RESPONSE FUNCTIONS
-
-okPlainText :: forall m. MonadOkapi m => Headers -> Text.Text -> m Result
-okPlainText headers = respond 200 ([("Content-Type", "text/plain")] <> headers) . LazyByteString.fromStrict . Text.encodeUtf8
-
-okJSON :: forall a m. (MonadOkapi m, Aeson.ToJSON a) => Headers -> a -> m Result
-okJSON headers = respond 200 ([("Content-Type", "application/json")] <> headers) . Aeson.encode
-
-okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Result
-okLucid headers = ok headers . Lucid.renderBS . Lucid.toHtml
-
-noContent :: forall a m. MonadOkapi m => Headers -> m Result
-noContent headers = respond 204 headers ""
-
--- TODO: Use response builder
-ok :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
-ok headers = respond 200 ([("Content-Type", "text/html")] <> headers)
-
-connectEventSource :: forall m. MonadOkapi m => EventSource.EventSource -> m Result
-connectEventSource eventSource = do
-  IO.liftIO $ print "Attempting to connect SSE source from Servo"
-  state <- State.get
-  logic state
-  where
-    logic :: State -> m Result
-    logic state
-      | not $ isMethodParsed state = Except.throwError Skip
-      | not $ isPathParsed state = Except.throwError Skip
-      | not $ isQueryParamsParsed state = Except.throwError Skip
-      -- not $ isBodyParsed request = Except.throwError Skip
-      | otherwise = do
-        IO.liftIO $ print "Responded from servo, passing off to WAI"
-        pure $ ResultEventSource eventSource
 
 respond :: forall m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m Result
 respond status headers body = do
@@ -445,6 +404,44 @@ respond status headers body = do
         IO.liftIO $ print "Responded from servo, passing off to WAI"
         pure $ ResultResponse $ Response status headers body
 
+-- TODO: Use response builder?
+okHTML :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
+okHTML headers = respond 200 ([("Content-Type", "text/html")] <> headers)
+
+okPlainText :: forall m. MonadOkapi m => Headers -> Text.Text -> m Result
+okPlainText headers = respond 200 ([("Content-Type", "text/plain")] <> headers) . LazyByteString.fromStrict . Text.encodeUtf8
+
+okJSON :: forall a m. (MonadOkapi m, Aeson.ToJSON a) => Headers -> a -> m Result
+okJSON headers = respond 200 ([("Content-Type", "application/json")] <> headers) . Aeson.encode
+
+okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Result
+okLucid headers = okHTML headers . Lucid.renderBS . Lucid.toHtml
+
+noContent :: forall a m. MonadOkapi m => Headers -> m Result
+noContent headers = respond 204 headers ""
+
+file :: forall m. MonadOkapi m => Natural.Natural -> Headers -> FilePath -> m Result
+file status headers = pure . ResultFile . File status headers
+
+okFile :: forall m. MonadOkapi m => Headers -> FilePath -> m Result
+okFile headers = file 200 headers
+
+connectEventSource :: forall m. MonadOkapi m => EventSource.EventSource -> m Result
+connectEventSource eventSource = do
+  IO.liftIO $ print "Attempting to connect SSE source from Servo"
+  state <- State.get
+  logic state
+  where
+    logic :: State -> m Result
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
+      | not $ isQueryParamsParsed state = Except.throwError Skip
+      -- not $ isBodyParsed request = Except.throwError Skip
+      | otherwise = do
+        IO.liftIO $ print "Responded from servo, passing off to WAI"
+        pure $ ResultEventSource eventSource
+
 -- ERROR FUNCTIONS
 
 skip :: forall a m. MonadOkapi m => m a
@@ -453,8 +450,8 @@ skip = Except.throwError Skip
 error :: forall a m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m a
 error status headers = Except.throwError . Error . Response status headers
 
-ok200 :: MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
-ok200 = respond 200
+-- ok200 :: MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
+-- ok200 = respond 200
 
 error500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
 error500 = error 500

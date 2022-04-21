@@ -61,9 +61,16 @@ data Request = Request
 
 data Result
   = ResultResponse Response
+  | ResultFile File
   | ResultEventSource EventSource.EventSource
 
 -- ResultJob (IO ())
+
+data File = File
+  { fileStatus :: Natural.Natural
+  , fileHeaders :: Headers
+  , filePath :: FilePath
+  }
 
 data Response = Response
   { responseStatus :: Natural.Natural,
