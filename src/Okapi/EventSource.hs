@@ -6,7 +6,8 @@ module Okapi.EventSource where
 
 import qualified Control.Concurrent.Chan.Unagi as Unagi
 import qualified Control.Monad.IO.Class as IO
-import qualified Data.ByteString as ByteString
+-- import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Lazy as ByteString
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.Function as Function
 import qualified Data.Map.Strict as Map
@@ -44,7 +45,7 @@ eventToServerEvent Event {..} =
     (Builder.byteString . Text.encodeUtf8 <$> eventName)
     (Builder.byteString . Text.encodeUtf8 <$> eventID)
     (Builder.word8 <$> ByteString.unpack eventData)
-eventToServerEvent (CommentEvent comment) = EventSource.CommentEvent $ Builder.byteString comment
+eventToServerEvent (CommentEvent comment) = EventSource.CommentEvent $ Builder.lazyByteString comment
 eventToServerEvent CloseEvent = EventSource.CloseEvent
 
 eventSourceAppUnagiChan :: Chan Event -> Wai.Application

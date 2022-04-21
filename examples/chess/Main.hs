@@ -180,8 +180,8 @@ matchmaker = tryNewMatch
 
 sendStartEvent :: EventSource -> Text -> Text -> IO ()
 sendStartEvent eventSource p1Name p2Name = do
-  let event1 = Event (Just $ "start-" <> p1Name) Nothing $ renderStrict startingBoard
-      event2 = Event (Just $ "start-" <> p2Name) Nothing $ renderStrict startingBoard
+  let event1 = Event (Just $ "start-" <> p1Name) Nothing $ renderBS $ toHtml startingBoard
+      event2 = Event (Just $ "start-" <> p2Name) Nothing $ renderBS $ toHtml startingBoard
   sendEvent eventSource event1
   sendEvent eventSource event2
 
@@ -190,8 +190,8 @@ sendEvent eventSource event = do
   let (eventSourceIn, _eventSourceOut) = eventSource
   liftIO $ Unagi.writeChan eventSourceIn event
 
-renderStrict :: ToHtml a => a -> BS.ByteString
-renderStrict = LBS.toStrict . renderBS . toHtmlRaw
+-- renderStrict :: ToHtml a => a -> BS.ByteString
+-- renderStrict = LBS.toStrict . renderBS . toHtmlRaw
 
 newtype Wrap a = Wrap a
 
@@ -247,11 +247,33 @@ instance ToHtml Home where
 missingCard_ :: Term arg result => arg -> result
 missingCard_ = term "missing-card"
 
-positionToXY :: Position -> (Int, Int)
-positionToXY (file, rank) = (fromEnum file, 9 - fromEnum rank)
+intToFile :: Int -> File
+intToFile 1 = FileA 
+intToFile 2 = FileB 
+intToFile 3 = FileC 
+intToFile 4 = FileD 
+intToFile 5 = FileE 
+intToFile 6 = FileF 
+intToFile 7 = FileG 
+intToFile 8 = FileH
+intToFile _ = Prelude.error "No File for that Int exists" 
+
+intToRank :: Int -> Rank
+intToRank 1 = Rank1
+intToRank 2 = Rank2 
+intToRank 3 = Rank3 
+intToRank 4 = Rank4 
+intToRank 5 = Rank5 
+intToRank 6 = Rank6 
+intToRank 7 = Rank7 
+intToRank 8 = Rank8
+intToRank _ = Prelude.error "No Rank for that Int exists" 
+
+-- positionToXY :: Position -> (Int, Int)
+-- positionToXY (file, rank) = (fromEnum file, 9 - fromEnum rank)
 
 xyToPosition :: (Int, Int) -> Position
-xyToPosition (x, y) = (toEnum x, toEnum (9 - y))
+xyToPosition (x, y) = (intToFile y, intToRank (9 - x))
 
 instance ToHtml Piece where
   toHtml (White, Pawn) = "♙"
@@ -267,13 +289,13 @@ instance ToHtml Piece where
   toHtml (White, King) = "♔"
   toHtml (Black, King) = "♚"
   toHtmlRaw = toHtml
-
+  
 instance ToHtml Board where
   toHtml (Board state highlights) = do
     -- link_ [id_ "style", rel_ "stylesheet", href_ "https://the.missing.style", hxSwapOob_ "true", hxSwap_ "outerHTML"]
-    div_ [class_ "grid grid-cols-8 grid-rows-8 gap-0 h-full w-full"] $ do
-      let blackSquareClass_ = class_ "flex items-center justify-center bg-gray-700"
-          whiteSquareClass_ = class_ "flex items-center justify-center bg-gray-200"
+    div_ [class_ "grid grid-cols-8 grid-rows-8 gap-0 h-full w-full border-2 border-black"] $ do
+      let blackSquareClass_ = class_ "flex items-center justify-center bg-gray-700 aspect-square"
+          whiteSquareClass_ = class_ "flex items-center justify-center bg-gray-200 aspect-square"
       forM_
         ([(x, y) | x <- [1 .. 8], y <- [1 .. 8]])
         ( \(n, m) ->
@@ -282,6 +304,9 @@ instance ToHtml Board where
                   then (if odd m then whiteSquareClass_ else blackSquareClass_)
                   else (if odd m then blackSquareClass_ else whiteSquareClass_)
               ]
+              -- $ "♖"
+              -- $ toHtml $ show n
+              -- "BB"
               $ maybe "" toHtml (Map.lookup (xyToPosition (n, m)) state)
         )
 
@@ -389,7 +414,7 @@ instance ToHtml JoinedPool where
   toHtml (JoinedPool name) = do
     div_ [hxExt_ "sse", sseConnect_ "/stream"] $ do
       div_ [hxGet_ $ "/confirm?player=" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name] ""
-      div_ [sseSwap_ ["start-" <> name], class_ "w-1/2 aspect-square container mx-auto"] $ do
+      div_ [sseSwap_ ["start-" <> name], class_ "w-1/2 aspect-square container mx-auto my-10"] $ do
         h4_ $ toHtml $ "Hello, " <> name <> ". Finding an opponent..."
   toHtmlRaw = toHtml
 

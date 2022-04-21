@@ -12,8 +12,9 @@ data PieceType
   | Bishop
   | Queen
   | King
+  deriving (Eq, Show)
 
-data PieceColor = White | Black
+data PieceColor = White | Black deriving (Eq, Show)
 
 type Piece = (PieceColor, PieceType)
 
@@ -50,7 +51,7 @@ data File
   | FileF
   | FileG
   | FileH
-  deriving (Eq, Ord, Enum)
+  deriving (Eq, Show, Ord)
 
 data Rank
   = Rank1
@@ -61,7 +62,7 @@ data Rank
   | Rank6
   | Rank7
   | Rank8
-  deriving (Eq, Ord, Enum)
+  deriving (Eq, Show, Ord)
 
 type Position = (File, Rank)
 
