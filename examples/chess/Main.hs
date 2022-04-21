@@ -289,6 +289,9 @@ instance ToHtml Piece where
   toHtml (White, King) = "♔"
   toHtml (Black, King) = "♚"
   toHtmlRaw = toHtml
+
+tShow :: Show a => a -> Text
+tShow = pack . show
   
 instance ToHtml Board where
   toHtml (Board state highlights) = do
@@ -300,7 +303,8 @@ instance ToHtml Board where
         ([(x, y) | x <- [1 .. 8], y <- [1 .. 8]])
         ( \(n, m) ->
             div_
-              [ if odd n
+              [ id_ $ tShow n <> tShow m
+              , if odd n
                   then (if odd m then whiteSquareClass_ else blackSquareClass_)
                   else (if odd m then blackSquareClass_ else whiteSquareClass_)
               ]
