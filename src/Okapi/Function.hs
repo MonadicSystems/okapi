@@ -469,29 +469,13 @@ error422 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> 
 error422 = error 422
 
 -- | Execute the next parser even if the first one throws an Error error
--- TODO: Make function signature more generic using catchError
-(<!>) :: Monad m => OkapiT m a -> OkapiT m a -> OkapiT m a
-(OkapiT (ExceptT.ExceptT (StateT.StateT mx))) <!> (OkapiT (ExceptT.ExceptT (StateT.StateT my))) = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
-  (eitherX, stateX) <- mx s
-  case eitherX of
-    Left Skip -> do
-      (eitherY, stateY) <- my s
-      case eitherY of
-        Left Skip -> pure (Left Skip, s)
-        Left error@(Error _) -> pure (Left error, s)
-        Right y -> pure (Right y, stateY)
-    Left error@(Error _) -> do
-      (eitherY, stateY) <- my s
-      case eitherY of
-        Left Skip -> pure (Left Skip, s)
-        Left error@(Error _) -> pure (Left error, s)
-        Right y -> pure (Right y, stateY)
-    Right x -> pure (Right x, stateX)
+(<!>) :: MonadOkapi m => m a -> m a -> m a
+parser1 <!> parser2 = Except.catchError parser1 (const parser2)
 
-optionalError :: Monad m => OkapiT m a -> OkapiT m (Maybe a)
+optionalError :: MonadOkapi m => m a -> m (Maybe a)
 optionalError parser = (Just <$> parser) <!> pure Nothing
 
-optionError :: Monad m => a -> OkapiT m a -> OkapiT m a
+optionError :: MonadOkapi m => a -> m a -> m a
 optionError value parser = do
   mbValue <- optionalError parser
   case mbValue of
