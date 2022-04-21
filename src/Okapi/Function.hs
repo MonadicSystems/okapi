@@ -469,6 +469,7 @@ error422 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> 
 error422 = error 422
 
 -- | Execute the next parser even if the first one throws an Error error
+-- TODO: Make function signature more generic using catchError
 (<!>) :: Monad m => OkapiT m a -> OkapiT m a -> OkapiT m a
 (OkapiT (ExceptT.ExceptT (StateT.StateT mx))) <!> (OkapiT (ExceptT.ExceptT (StateT.StateT my))) = OkapiT . ExceptT.ExceptT . StateT.StateT $ \s -> do
   (eitherX, stateX) <- mx s
