@@ -78,6 +78,7 @@ data Response = Response
     responseBody :: LazyByteString.ByteString
   }
 
+-- TODO: ADD Text field to skip fo 
 data Failure = Skip | Error Response
 
 newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT.ExceptT Failure (StateT.StateT State m) a}

@@ -18,9 +18,9 @@ data PieceType
   | King
   deriving (Eq, Show)
 
-data PieceColor = White | Black deriving (Eq, Show)
+data PieceColor = White | Black deriving (Eq, Ord, Show)
 
-newtype Piece = Piece { unPiece :: (PieceColor, PieceType) }
+newtype Piece = Piece { unPiece :: (PieceColor, PieceType) } deriving (Eq, Show)
 
 instance ToHtml Piece where
   toHtml (Piece (White, Pawn)) = "♙"
@@ -155,8 +155,8 @@ data Board = Board {boardState :: Map Position Piece, boardHighlights :: [Positi
 instance ToHtml Board where
   toHtml (Board state highlights) = do
     div_ [class_ "grid grid-cols-8 grid-rows-8 gap-0 h-full w-full border-2 border-black"] $ do
-      let blackSquareClass_ = class_ "flex items-center justify-center bg-gray-700 aspect-square"
-          whiteSquareClass_ = class_ "flex items-center justify-center bg-gray-200 aspect-square"
+      let blackSquareClass_ = class_ "flex items-center justify-center bg-gray-700 aspect-square text-3xl"
+          whiteSquareClass_ = class_ "flex items-center justify-center bg-gray-200 aspect-square text-3xl"
       forM_
         ([(x, y) | x <- [1 .. 8], y <- [1 .. 8]])
         ( \(n, m) ->

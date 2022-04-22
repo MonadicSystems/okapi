@@ -420,6 +420,11 @@ okLucid headers = okHTML headers . Lucid.renderBS . Lucid.toHtml
 noContent :: forall a m. MonadOkapi m => Headers -> m Result
 noContent headers = respond 204 headers ""
 
+redirectTo :: forall a m. MonadOkapi m => Char8.ByteString -> m Result
+redirectTo url = respond 302 [("Location", url)] ""
+
+-- File Responses
+
 file :: forall m. MonadOkapi m => Natural.Natural -> Headers -> FilePath -> m Result
 file status headers filePath = do
   state <- State.get
@@ -437,6 +442,8 @@ file status headers filePath = do
 
 okFile :: forall m. MonadOkapi m => Headers -> FilePath -> m Result
 okFile headers = file 200 headers
+
+-- Event Source Responses
 
 connectEventSource :: forall m. MonadOkapi m => EventSource.EventSource -> m Result
 connectEventSource eventSource = do
@@ -461,9 +468,6 @@ skip = Except.throwError Skip
 
 error :: forall a m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m a
 error status headers = Except.throwError . Error . Response status headers
-
--- ok200 :: MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
--- ok200 = respond 200
 
 error500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
 error500 = error 500

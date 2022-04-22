@@ -122,8 +122,8 @@ matchmaker = tryNewMatch
         then do
           let p1 = Set.elemAt 0 confirmedPool -- get p1
               p2 = Set.elemAt 1 confirmedPool -- get p2
-          atomically $ deletePlayerFromWaitPool envRef p1 -- delete p1 from pool
-          atomically $ deletePlayerFromWaitPool envRef p2 -- delete p2 from pool
+          atomically $ deletePlayerFromConfirmedPool envRef p1 -- delete p1 from pool
+          atomically $ deletePlayerFromConfirmedPool envRef p2 -- delete p2 from pool
           atomically $ modifyMatches (Set.insert $ Match (p1, p2)) envRef -- add new match
           eventSource <- atomically $ readEventSource envRef
           sendStartEvents eventSource p1 p2
@@ -131,8 +131,8 @@ matchmaker = tryNewMatch
 
     sendStartEvents :: EventSource -> Text -> Text -> IO ()
     sendStartEvents eventSource p1Name p2Name = do
-      let event1 = Event (Just $ "start-" <> p1Name) Nothing $ renderBS $ toHtml startingBoard
-          event2 = Event (Just $ "start-" <> p2Name) Nothing $ renderBS $ toHtml startingBoard
+      let event1 = Event (Just $ "init-" <> p1Name) Nothing $ renderBS $ toHtml startingBoard
+          event2 = Event (Just $ "init-" <> p2Name) Nothing $ renderBS $ toHtml startingBoard
       Okapi.sendEvent eventSource event1
       Okapi.sendEvent eventSource event2
 
@@ -234,7 +234,7 @@ instance ToHtml JoinedPool where
   toHtml (JoinedPool name) = do
     div_ [hxExt_ "sse", sseConnect_ "/stream"] $ do
       div_ [hxGet_ $ "/confirm?player=" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name] ""
-      div_ [sseSwap_ ["start-" <> name], class_ "w-1/2 aspect-square container mx-auto my-10"] $ do
+      div_ [sseSwap_ ["init-" <> name, "update-" <> name], class_ "w-1/2 aspect-square container mx-auto my-10"] $ do
         h4_ $ toHtml $ "Hello, " <> name <> ". Finding an opponent..."
   toHtmlRaw = toHtml
 
@@ -247,7 +247,7 @@ sseSwap_ messageNames = makeAttribute "sse-swap" $ Data.Text.intercalate "," mes
 -- API
 
 chess :: Okapi Result
-chess = home <|> register <|> stream <|> confirm
+chess = home <|> register <|> stream <|> confirm <|> select <|> move
 
 home :: Okapi Result
 home = do
@@ -281,3 +281,24 @@ confirm = do
     atomically $ deletePlayerFromWaitPool envRef playerName
     atomically $ addPlayerToConfirmedPool envRef playerName
   noContent []
+
+select :: Okapi Result
+select = do
+  get
+  Okapi.seg "select"
+  startPosition <- queryParam "start"
+  piece <- queryParam "piece"
+  -- get position
+  -- get piece
+  -- look up current game state
+  -- function that takes the game state, the piece, the position and returns the game board with highlighted moves and move urls
+  undefined
+
+move :: Okapi Result
+move = do
+  get
+  Okapi.seg "move"
+  endPosition <- queryParam "end"
+  piece <- queryParam "piece"
+  -- function that takes a piece, the endPosition, and moves the piece to that position, returning updated the board state
+  undefined
