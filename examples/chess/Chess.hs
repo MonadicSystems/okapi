@@ -1,9 +1,13 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Chess where
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Lucid
+import Data.Text
+import Control.Monad
 
 data PieceType
   = Pawn
@@ -16,31 +20,46 @@ data PieceType
 
 data PieceColor = White | Black deriving (Eq, Show)
 
-type Piece = (PieceColor, PieceType)
+newtype Piece = Piece { unPiece :: (PieceColor, PieceType) }
 
-wPawn = (White, Pawn)
+instance ToHtml Piece where
+  toHtml (Piece (White, Pawn)) = "♙"
+  toHtml (Piece (Black, Pawn)) = "♟"
+  toHtml (Piece (White, Knight)) = "♘"
+  toHtml (Piece (Black, Knight)) = "♞"
+  toHtml (Piece (White, Rook)) = "♖"
+  toHtml (Piece (Black, Rook)) = "♜"
+  toHtml (Piece (White, Bishop)) = "♗"
+  toHtml (Piece (Black, Bishop)) = "♝"
+  toHtml (Piece (White, Queen)) = "♕"
+  toHtml (Piece (Black, Queen)) = "♛"
+  toHtml (Piece (White, King)) = "♔"
+  toHtml (Piece (Black, King)) = "♚"
+  toHtmlRaw = toHtml
 
-wKnight = (White, Knight)
+wPawn = Piece (White, Pawn)
 
-wRook = (White, Rook)
+wKnight = Piece (White, Knight)
 
-wBishop = (White, Bishop)
+wRook = Piece (White, Rook)
 
-wQueen = (White, Queen)
+wBishop = Piece (White, Bishop)
 
-wKing = (White, King)
+wQueen = Piece (White, Queen)
 
-bPawn = (Black, Pawn)
+wKing = Piece (White, King)
 
-bKnight = (Black, Knight)
+bPawn = Piece (Black, Pawn)
 
-bRook = (Black, Rook)
+bKnight = Piece (Black, Knight)
 
-bBishop = (Black, Bishop)
+bRook = Piece (Black, Rook)
 
-bQueen = (Black, Queen)
+bBishop = Piece (Black, Bishop)
 
-bKing = (Black, King)
+bQueen = Piece (Black, Queen)
+
+bKing = Piece (Black, King)
 
 data File
   = FileA
@@ -64,137 +83,95 @@ data Rank
   | Rank8
   deriving (Eq, Show, Ord)
 
-type Position = (File, Rank)
-
-a1 = (FileA, Rank1)
-
-a2 = (FileA, Rank2)
-
-a3 = (FileA, Rank3)
-
-a4 = (FileA, Rank4)
-
-a5 = (FileA, Rank5)
-
-a6 = (FileA, Rank6)
-
-a7 = (FileA, Rank7)
-
-a8 = (FileA, Rank8)
-
-b1 = (FileB, Rank1)
-
-b2 = (FileB, Rank2)
-
-b3 = (FileB, Rank3)
-
-b4 = (FileB, Rank4)
-
-b5 = (FileB, Rank5)
-
-b6 = (FileB, Rank6)
-
-b7 = (FileB, Rank7)
-
-b8 = (FileB, Rank8)
-
-c1 = (FileC, Rank1)
-
-c2 = (FileC, Rank2)
-
-c3 = (FileC, Rank3)
-
-c4 = (FileC, Rank4)
-
-c5 = (FileC, Rank5)
-
-c6 = (FileC, Rank6)
-
-c7 = (FileC, Rank7)
-
-c8 = (FileC, Rank8)
-
-d1 = (FileD, Rank1)
-
-d2 = (FileD, Rank2)
-
-d3 = (FileD, Rank3)
-
-d4 = (FileD, Rank4)
-
-d5 = (FileD, Rank5)
-
-d6 = (FileD, Rank6)
-
-d7 = (FileD, Rank7)
-
-d8 = (FileD, Rank8)
-
-e1 = (FileE, Rank1)
-
-e2 = (FileE, Rank2)
-
-e3 = (FileE, Rank3)
-
-e4 = (FileE, Rank4)
-
-e5 = (FileE, Rank5)
-
-e6 = (FileE, Rank6)
-
-e7 = (FileE, Rank7)
-
-e8 = (FileE, Rank8)
-
-f1 = (FileF, Rank1)
-
-f2 = (FileF, Rank2)
-
-f3 = (FileF, Rank3)
-
-f4 = (FileF, Rank4)
-
-f5 = (FileF, Rank5)
-
-f6 = (FileF, Rank6)
-
-f7 = (FileF, Rank7)
-
-f8 = (FileF, Rank8)
-
-g1 = (FileG, Rank1)
-
-g2 = (FileG, Rank2)
-
-g3 = (FileG, Rank3)
-
-g4 = (FileG, Rank4)
-
-g5 = (FileG, Rank5)
-
-g6 = (FileG, Rank6)
-
-g7 = (FileG, Rank7)
-
-g8 = (FileG, Rank8)
-
-h1 = (FileH, Rank1)
-
-h2 = (FileH, Rank2)
-
-h3 = (FileH, Rank3)
-
-h4 = (FileH, Rank4)
-
-h5 = (FileH, Rank5)
-
-h6 = (FileH, Rank6)
-
-h7 = (FileH, Rank7)
-
-h8 = (FileH, Rank8)
+newtype Position = Position { unPosition :: (File, Rank) } deriving (Eq, Ord)
+
+a1 = Position (FileA, Rank1)
+a2 = Position (FileA, Rank2)
+a3 = Position (FileA, Rank3)
+a4 = Position (FileA, Rank4)
+a5 = Position (FileA, Rank5)
+a6 = Position (FileA, Rank6)
+a7 = Position (FileA, Rank7)
+a8 = Position (FileA, Rank8)
+b1 = Position (FileB, Rank1)
+b2 = Position (FileB, Rank2)
+b3 = Position (FileB, Rank3)
+b4 = Position (FileB, Rank4)
+b5 = Position (FileB, Rank5)
+b6 = Position (FileB, Rank6)
+b7 = Position (FileB, Rank7)
+b8 = Position (FileB, Rank8)
+c1 = Position (FileC, Rank1)
+c2 = Position (FileC, Rank2)
+c3 = Position (FileC, Rank3)
+c4 = Position (FileC, Rank4)
+c5 = Position (FileC, Rank5)
+c6 = Position (FileC, Rank6)
+c7 = Position (FileC, Rank7)
+c8 = Position (FileC, Rank8)
+d1 = Position (FileD, Rank1)
+d2 = Position (FileD, Rank2)
+d3 = Position (FileD, Rank3)
+d4 = Position (FileD, Rank4)
+d5 = Position (FileD, Rank5)
+d6 = Position (FileD, Rank6)
+d7 = Position (FileD, Rank7)
+d8 = Position (FileD, Rank8)
+e1 = Position (FileE, Rank1)
+e2 = Position (FileE, Rank2)
+e3 = Position (FileE, Rank3)
+e4 = Position (FileE, Rank4)
+e5 = Position (FileE, Rank5)
+e6 = Position (FileE, Rank6)
+e7 = Position (FileE, Rank7)
+e8 = Position (FileE, Rank8)
+f1 = Position (FileF, Rank1)
+f2 = Position (FileF, Rank2)
+f3 = Position (FileF, Rank3)
+f4 = Position (FileF, Rank4)
+f5 = Position (FileF, Rank5)
+f6 = Position (FileF, Rank6)
+f7 = Position (FileF, Rank7)
+f8 = Position (FileF, Rank8)
+g1 = Position (FileG, Rank1)
+g2 = Position (FileG, Rank2)
+g3 = Position (FileG, Rank3)
+g4 = Position (FileG, Rank4)
+g5 = Position (FileG, Rank5)
+g6 = Position (FileG, Rank6)
+g7 = Position (FileG, Rank7)
+g8 = Position (FileG, Rank8)
+h1 = Position (FileH, Rank1)
+h2 = Position (FileH, Rank2)
+h3 = Position (FileH, Rank3)
+h4 = Position (FileH, Rank4)
+h5 = Position (FileH, Rank5)
+h6 = Position (FileH, Rank6)
+h7 = Position (FileH, Rank7)
+h8 = Position (FileH, Rank8)
 
 data Board = Board {boardState :: Map Position Piece, boardHighlights :: [Position]}
+  
+instance ToHtml Board where
+  toHtml (Board state highlights) = do
+    div_ [class_ "grid grid-cols-8 grid-rows-8 gap-0 h-full w-full border-2 border-black"] $ do
+      let blackSquareClass_ = class_ "flex items-center justify-center bg-gray-700 aspect-square"
+          whiteSquareClass_ = class_ "flex items-center justify-center bg-gray-200 aspect-square"
+      forM_
+        ([(x, y) | x <- [1 .. 8], y <- [1 .. 8]])
+        ( \(n, m) ->
+            div_
+              [ id_ $ tShow n <> tShow m
+              , if odd n
+                  then (if odd m then whiteSquareClass_ else blackSquareClass_)
+                  else (if odd m then blackSquareClass_ else whiteSquareClass_)
+              ]
+              $ maybe "" toHtml (Map.lookup (xyToPosition (n, m)) state)
+        )
+  toHtmlRaw = toHtml
+
+tShow :: Show a => a -> Text
+tShow = pack . show
 
 startingBoard :: Board
 startingBoard = Board (Map.fromList $ whiteFront <> whiteBack <> blackFront <> blackBack) []
@@ -239,3 +216,28 @@ startingBoard = Board (Map.fromList $ whiteFront <> whiteBack <> blackFront <> b
         (g8, bKnight),
         (h8, bRook)
       ]
+
+xyToPosition :: (Int, Int) -> Position
+xyToPosition (x, y) = Position (intToFile y, intToRank (9 - x))
+  where
+    intToFile :: Int -> File
+    intToFile 1 = FileA 
+    intToFile 2 = FileB 
+    intToFile 3 = FileC 
+    intToFile 4 = FileD 
+    intToFile 5 = FileE 
+    intToFile 6 = FileF 
+    intToFile 7 = FileG
+    intToFile 8 = FileH
+    intToFile _ = Prelude.error "No File for that Int exists"
+
+    intToRank :: Int -> Rank
+    intToRank 1 = Rank1
+    intToRank 2 = Rank2 
+    intToRank 3 = Rank3 
+    intToRank 4 = Rank4 
+    intToRank 5 = Rank5 
+    intToRank 6 = Rank6 
+    intToRank 7 = Rank7 
+    intToRank 8 = Rank8
+    intToRank _ = Prelude.error "No Rank for that Int exists"
