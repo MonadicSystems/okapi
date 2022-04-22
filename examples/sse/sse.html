@@ -1,0 +1,23 @@
+<!doctype html>
+
+<head>
+    <title>SSE Example</title>
+</head>
+
+<body>
+    <h1>Testing Server-Sent Events</h1>
+
+    <div id="output"></div>
+    <script>
+        const output = document.getElementById("output");
+
+        const src = new EventSource("/events");
+
+        src.onmessage = function (msg) {
+            console.log(msg.data);
+            var p = document.createElement("p");
+            p.appendChild(document.createTextNode(msg.data));
+            output.appendChild(p);
+        }
+    </script>
+</body>

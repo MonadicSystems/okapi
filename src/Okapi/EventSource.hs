@@ -2,7 +2,16 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
 
-module Okapi.EventSource where
+module Okapi.EventSource
+  ( ToSSE (..)
+  , Event (..)
+  , EventSource
+  , newEventSource
+  , sendEvent
+  , sendValue
+  , eventSourceAppUnagiChan
+  )
+where
 
 import qualified Control.Concurrent.Chan.Unagi as Unagi
 import qualified Control.Monad.IO.Class as IO
@@ -37,16 +46,14 @@ type Chan a = (Unagi.InChan a, Unagi.OutChan a)
 
 type EventSource = Chan Event
 
--- type EventSourcePool = Map.Map Int EventSource
+newEventSource :: IO EventSource
+newEventSource = Unagi.newChan
 
-eventToServerEvent :: Event -> EventSource.ServerEvent
-eventToServerEvent Event {..} =
-  EventSource.ServerEvent
-    (Builder.byteString . Text.encodeUtf8 <$> eventName)
-    (Builder.byteString . Text.encodeUtf8 <$> eventID)
-    (Builder.word8 <$> ByteString.unpack eventData)
-eventToServerEvent (CommentEvent comment) = EventSource.CommentEvent $ Builder.lazyByteString comment
-eventToServerEvent CloseEvent = EventSource.CloseEvent
+sendValue :: ToSSE a => EventSource -> a -> IO ()
+sendValue (inChan, _outChan) = Unagi.writeChan inChan . toSSE
+
+sendEvent :: EventSource -> Event -> IO ()
+sendEvent (inChan, _outChan) = Unagi.writeChan inChan
 
 eventSourceAppUnagiChan :: Chan Event -> Wai.Application
 eventSourceAppUnagiChan (inChan, _outChan) req sendResponse = do
@@ -67,6 +74,20 @@ eventSourceAppIO src _ sendResponse =
             Nothing -> return ()
             Just b -> sendChunk b >> flush >> loop
 
+eventToBuilder :: EventSource.ServerEvent -> Maybe Builder.Builder
+eventToBuilder (EventSource.CommentEvent txt) = Just $ field commentField txt
+eventToBuilder (EventSource.RetryEvent n) = Just $ field retryField (Builder.string8 . show $ n)
+eventToBuilder EventSource.CloseEvent = Nothing
+eventToBuilder (EventSource.ServerEvent n i d) =
+  Just $
+    mappend (name n (evid i $ evdata (mconcat d) nl)) nl
+  where
+    name Nothing = id
+    name (Just n') = mappend (field nameField n')
+    evid Nothing = id
+    evid (Just i') = mappend (field idField i')
+    evdata d' = mappend (field dataField d')
+
 nl :: Builder.Builder
 nl = Builder.char7 '\n'
 
@@ -77,33 +98,15 @@ dataField = Builder.string7 "data:"
 retryField = Builder.string7 "retry:"
 commentField = Builder.char7 ':'
 
--- |
---    Wraps the text as a labeled field of an event stream.
+-- | Wraps the text as a labeled field of an event stream.
 field :: Builder.Builder -> Builder.Builder -> Builder.Builder
 field l b = l `mappend` b `mappend` nl
 
-eventToBuilder :: EventSource.ServerEvent -> Maybe Builder.Builder
-eventToBuilder (EventSource.CommentEvent txt) = Just $ field commentField txt
-eventToBuilder (EventSource.RetryEvent n) = Just $ field retryField (Builder.string8 . show $ n)
-eventToBuilder EventSource.CloseEvent = Nothing
-eventToBuilder (EventSource.ServerEvent n i d) =
-  Just $
-    name n (evid i $ evdata (mconcat d) nl)
-  where
-    name Nothing = id
-    name (Just n') = mappend (field nameField n')
-    evid Nothing = id
-    evid (Just i') = mappend (field idField i')
-    evdata d' = mappend (field dataField d')
-
--- emptyEventSourcePool :: EventSourcePool
--- emptyEventSourcePool = Map.empty
-
--- insertIntoEventSourcePool :: Int -> EventSource -> EventSourcePool -> EventSourcePool
--- insertIntoEventSourcePool = Map.insert
-
--- deleteFromEventSourcePool :: Int -> EventSourcePool -> EventSourcePool
--- deleteFromEventSourcePool = Map.delete
-
-writeEventSource :: ToSSE a => EventSource -> a -> IO ()
-writeEventSource (inChan, _outChan) = Unagi.writeChan inChan . toSSE
+eventToServerEvent :: Event -> EventSource.ServerEvent
+eventToServerEvent Event {..} =
+  EventSource.ServerEvent
+    (Builder.byteString . Text.encodeUtf8 <$> eventName)
+    (Builder.byteString . Text.encodeUtf8 <$> eventID)
+    (Builder.word8 <$> ByteString.unpack eventData)
+eventToServerEvent (CommentEvent comment) = EventSource.CommentEvent $ Builder.lazyByteString comment
+eventToServerEvent CloseEvent = EventSource.CloseEvent

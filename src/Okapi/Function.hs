@@ -421,7 +421,19 @@ noContent :: forall a m. MonadOkapi m => Headers -> m Result
 noContent headers = respond 204 headers ""
 
 file :: forall m. MonadOkapi m => Natural.Natural -> Headers -> FilePath -> m Result
-file status headers = pure . ResultFile . File status headers
+file status headers filePath = do
+  state <- State.get
+  logic state
+  where
+    logic :: State -> m Result
+    logic state
+      | not $ isMethodParsed state = Except.throwError Skip
+      | not $ isPathParsed state = Except.throwError Skip
+      | not $ isQueryParamsParsed state = Except.throwError Skip
+      -- not $ isBodyParsed request = Except.throwError Skip
+      | otherwise = do
+        IO.liftIO $ print "Responded from servo, passing off to WAI"
+        pure $ ResultFile $ File status headers filePath
 
 okFile :: forall m. MonadOkapi m => Headers -> FilePath -> m Result
 okFile headers = file 200 headers

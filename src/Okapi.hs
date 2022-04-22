@@ -3,9 +3,7 @@ module Okapi
     OkapiT (..),
     MonadOkapi (..),
     Result,
-    Event (..),
-    Chan,
-    EventSource
+    module Okapi.EventSource
   )
 where
 

@@ -24,7 +24,6 @@ module Main where
 import Chess
 import Control.Applicative
 import Control.Concurrent
-import qualified Control.Concurrent.Chan.Unagi as Unagi
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TVar
 import Control.Monad.Extra
@@ -88,7 +87,7 @@ main = do
   print "Running chess app"
   let newEnvTVar :: IO (TVar Env)
       newEnvTVar = do
-        eventSource <- Unagi.newChan
+        eventSource <- Okapi.newEventSource
         newTVarIO $ Env (WaitPool mempty) (ConfirmedPool mempty) mempty eventSource
 
       hoistApp :: TVar Env -> App a -> IO a
@@ -155,7 +154,7 @@ confirmer = sendConfirmMessages
           forM_ (Set.toList waitPool) (sendConfirmMessage eventSource)
 
     sendConfirmMessage :: EventSource -> Text -> IO ()
-    sendConfirmMessage eventSource playerName = sendEvent eventSource $ Event (Just $ "confirm-" <> playerName) Nothing ""
+    sendConfirmMessage eventSource playerName = Okapi.sendEvent eventSource $ Event (Just $ "confirm-" <> playerName) Nothing ""
 
 matchmaker :: TVar Env -> IO ()
 matchmaker = tryNewMatch
@@ -182,13 +181,8 @@ sendStartEvent :: EventSource -> Text -> Text -> IO ()
 sendStartEvent eventSource p1Name p2Name = do
   let event1 = Event (Just $ "start-" <> p1Name) Nothing $ renderBS $ toHtml startingBoard
       event2 = Event (Just $ "start-" <> p2Name) Nothing $ renderBS $ toHtml startingBoard
-  sendEvent eventSource event1
-  sendEvent eventSource event2
-
-sendEvent :: EventSource -> Event -> IO ()
-sendEvent eventSource event = do
-  let (eventSourceIn, _eventSourceOut) = eventSource
-  liftIO $ Unagi.writeChan eventSourceIn event
+  Okapi.sendEvent eventSource event1
+  Okapi.sendEvent eventSource event2
 
 -- renderStrict :: ToHtml a => a -> BS.ByteString
 -- renderStrict = LBS.toStrict . renderBS . toHtmlRaw

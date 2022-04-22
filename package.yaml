@@ -136,6 +136,19 @@ executables:
     - servant
     - servant-lucid
     - servant-server
+  sse-exe:
+    main:                Main.hs
+    source-dirs:         examples/sse
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - okapi
+    - slave-thread
+    - time
+    - bytestring
+
 
 tests:
   okapi-test:
