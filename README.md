@@ -58,18 +58,21 @@ calc = do
   seg "calc"
   addOp <|> subOp <|> mulOp <|> divOp
 
+addOpRoute = [route|calc/addOp|]
 addOp :: Okapi Response
 addOp = do
   seg "add"
   (x, y) <- getArgs
   respondJSON [] $ x + y
 
+subOpRoute = [route|calc/subOp|]
 subOp :: Okapi Response
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
   respondJSON [] $ x - y
 
+mulOpRoute = [route|calc/mulOp|]
 mulOp :: Okapi Response
 mulOp = do
   seg "mul"
@@ -82,6 +85,7 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
+divOpRoute = [route|calc/divOp|]
 divOp :: Okapi Response
 divOp = do
   seg "div"
