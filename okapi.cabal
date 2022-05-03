@@ -177,6 +177,7 @@ executable chess-exe
     , mmorph
     , mtl
     , okapi
+    , parser-combinators
     , random
     , slave-thread
     , stm

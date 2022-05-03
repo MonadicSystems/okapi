@@ -41,6 +41,7 @@ import Okapi
 import qualified SlaveThread
 import Text.InterpolatedString.Perl6
 import Web.FormUrlEncoded
+import Control.Monad.Combinators
 
 type Okapi a = OkapiT App a
 
@@ -232,10 +233,12 @@ data JoinedPool = JoinedPool Text
 
 instance ToHtml JoinedPool where
   toHtml (JoinedPool name) = do
-    div_ [hxExt_ "sse", sseConnect_ "/stream"] $ do
-      div_ [hxGet_ $ "/confirm?player=" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name] ""
-      div_ [sseSwap_ ["init-" <> name, "update-" <> name], class_ "w-1/2 aspect-square container mx-auto my-10"] $ do
+    div_ [hxExt_ "sse", sseConnect_ "/stream", class_ "grid grid-cols-4 grid-rows-4 gap-2 my-10"] $ do
+      div_ [hxGet_ $ "/confirm?player=" <> name, hxSwap_ "outerHTML", hxTrigger_ $ "sse:confirm-" <> name, class_ "hidden"] ""
+      div_ [sseSwap_ ["init-" <> name, "update-" <> name], class_ "col-span-3 row-span-4 aspect-square container"] $ do
         h4_ $ toHtml $ "Hello, " <> name <> ". Finding an opponent..."
+      div_ [class_ "flex flex-col gap-2 col-span-1 row-span-4 justify-items-center", sseSwap_ ["game-" <> name]] $ do
+        p_ "Finding an opponent..."
   toHtmlRaw = toHtml
 
 sseConnect_ :: Text -> Attribute
@@ -247,7 +250,15 @@ sseSwap_ messageNames = makeAttribute "sse-swap" $ Data.Text.intercalate "," mes
 -- API
 
 chess :: Okapi Result
-chess = home <|> register <|> stream <|> confirm <|> select <|> move
+chess = choice
+  [ home
+  , register
+  , stream
+  , confirm
+  , select
+  , move
+  ]
+  -- home <|> register <|> stream <|> confirm <|> select <|> move
 
 home :: Okapi Result
 home = do
@@ -286,19 +297,38 @@ select :: Okapi Result
 select = do
   get
   Okapi.seg "select"
-  startPosition <- queryParam "start"
+  position <- queryParam "position"
   piece <- queryParam "piece"
-  -- get position
-  -- get piece
-  -- look up current game state
-  -- function that takes the game state, the piece, the position and returns the game board with highlighted moves and move urls
-  undefined
+  possibleMovesResult (Board mempty) position piece
+  where
+    possibleMovesResult :: MonadOkapi m => Board -> Position -> Piece -> m Result
+    possibleMovesResult board startPosition piece = do
+      let possibleMoves = calculatePossibleMoves board startPosition piece
+      case possibleMoves of
+        [] -> noContent []
+        (position:otherPositions) -> okLucid [] $ do
+          let
+            possibleMoveClass =
+              \pos -> positionToTileClass pos <> class_ " border-2 border-green-300"
+          div_ [id_ $ tShow position, possibleMoveClass position] $
+            case Map.lookup position $ unBoard board of
+              Nothing -> ""
+              Just piece' -> toHtml piece'
+          forM_ otherPositions
+            (\pos -> do
+              div_ [id_ $ tShow pos, possibleMoveClass pos, hxSwapOob_ "true"] $
+                case Map.lookup pos $ unBoard board of
+                  Nothing -> ""
+                  Just piece -> toHtml piece
+            )
 
 move :: Okapi Result
 move = do
   get
   Okapi.seg "move"
-  endPosition <- queryParam "end"
+  position <- queryParam "position"
   piece <- queryParam "piece"
-  -- function that takes a piece, the endPosition, and moves the piece to that position, returning updated the board state
-  undefined
+  moveResult
+  where
+    moveResult :: Board -> Position -> Piece -> m Result
+    moveResult

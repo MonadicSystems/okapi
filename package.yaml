@@ -122,6 +122,7 @@ executables:
     - stm
     - unagi-chan
     - containers
+    - parser-combinators
   servant-exe:
     main:                Main.hs
     source-dirs:         examples/servant
