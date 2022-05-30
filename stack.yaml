@@ -38,6 +38,8 @@ packages:
 extra-deps:
 - lucid-htmx-0.1.0.6@sha256:83d9eed5ff74778a2dfc3f320a66b08592a2880abca28d75747a0513a39bd871,1528
 
+pvp-bounds: both
+
 # Override default flag values for local packages and extra-deps
 # flags: {}
 

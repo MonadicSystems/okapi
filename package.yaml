@@ -2,17 +2,15 @@ name:                okapi
 version:             0.1.0.0
 github:              "githubuser/okapi"
 license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2022 Author name here"
+author:              "Monadic Systems LLC"
+maintainer:          "tech@monadic.systems"
+copyright:           "2022 Monadic Systems LLC"
+category:            "Web"
+synopsis:            "A microframework based on monadic parsing"
 
 extra-source-files:
 - README.md
 - ChangeLog.md
-
-# Metadata used when publishing your package
-# synopsis:            Short description of your package
-# category:            Web
 
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
