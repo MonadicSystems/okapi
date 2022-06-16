@@ -27,11 +27,10 @@ module Okapi.Function
     options,
     patch,
     -- PATH PARSERS
-    seg,
-    segs,
-    segParam,
-    segWith,
+    pathSeg,
     path,
+    pathParam,
+    pathSegWith,
     -- QUERY PARAM PARSERS
     queryParam,
     queryFlag,
@@ -40,9 +39,11 @@ module Okapi.Function
     auth,
     basicAuth,
     -- BODY PARSERS
+    -- TODO: bodyRaw,
     bodyJSON,
     bodyForm,
     -- RESPOND FUNCTIONS
+    ok,
     okPlainText,
     okJSON,
     okHTML,
@@ -54,11 +55,17 @@ module Okapi.Function
     -- FAILURE FUNCTIONS
     skip,
     error,
-    error500,
     error401,
     error403,
     error404,
     error422,
+    error500,
+    -- GUARD FUNCTIONS
+    guardError,
+    guard401,
+    guard403,
+    guard422,
+    guard500,
     -- ERROR HANDLING
     (<!>),
     optionalError,
@@ -200,16 +207,16 @@ method method = do
 -- PARSING PATHS
 
 -- | Parses a single path segment matching the given text and discards it
-seg :: forall m. MonadOkapi m => Text.Text -> m ()
-seg goal = segWith (goal ==)
+pathSeg :: forall m. MonadOkapi m => Text.Text -> m ()
+pathSeg goal = pathSegWith (goal ==)
 
 -- | Parses mutiple segments matching the order of the given list and discards them
 -- | TODO: Needs testing. May not have the correct behavior
-segs :: forall m. MonadOkapi m => [Text.Text] -> m ()
-segs = mapM_ seg
+path :: forall m. MonadOkapi m => [Text.Text] -> m ()
+path = mapM_ pathSeg
 
-segWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
-segWith predicate = do
+pathSegWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
+pathSegWith predicate = do
   IO.liftIO $ print "Attempting to parse seg"
   state <- State.get
   logic state
@@ -224,10 +231,9 @@ segWith predicate = do
         State.put $ segParsed state
         pure ()
 
--- | TODO: Change Read a constraint to custom typeclass or FromHTTPApiData
 -- | Parses a single seg segment, and returns the parsed seg segment as a value of the given type
-segParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => m a
-segParam = do
+pathParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => m a
+pathParam = do
   IO.liftIO $ print "Attempting to get param from seg"
   state <- State.get
   logic state
@@ -242,6 +248,7 @@ segParam = do
           pure value
 
 -- | Matches entire remaining path or fails
+{-
 path :: forall m. MonadOkapi m => [Text.Text] -> m ()
 path pathMatch = do
   state <- State.get
@@ -253,6 +260,7 @@ path pathMatch = do
       | otherwise = do
         State.put $ pathParsed state
         pure ()
+-}
 
 -- PARSING QUERY PARAMETERS
 
@@ -404,24 +412,31 @@ respond status headers body = do
         IO.liftIO $ print "Responded from servo, passing off to WAI"
         pure $ ResultResponse $ Response status headers body
 
--- TODO: Use response builder?
-okHTML :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
-okHTML headers = respond 200 ([("Content-Type", "text/html")] <> headers)
+ok :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
+ok = respond 200
 
-okPlainText :: forall m. MonadOkapi m => Headers -> Text.Text -> m Result
-okPlainText headers = respond 200 ([("Content-Type", "text/plain")] <> headers) . LazyByteString.fromStrict . Text.encodeUtf8
-
-okJSON :: forall a m. (MonadOkapi m, Aeson.ToJSON a) => Headers -> a -> m Result
-okJSON headers = respond 200 ([("Content-Type", "application/json")] <> headers) . Aeson.encode
-
-okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Result
-okLucid headers = okHTML headers . Lucid.renderBS . Lucid.toHtml
+notFound :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
+notFound = respond 404
 
 noContent :: forall a m. MonadOkapi m => Headers -> m Result
 noContent headers = respond 204 headers ""
 
+-- TODO: Change type of URL?
 redirectTo :: forall a m. MonadOkapi m => Char8.ByteString -> m Result
 redirectTo url = respond 302 [("Location", url)] ""
+
+-- TODO: Use response builder?
+okHTML :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
+okHTML headers = ok ([("Content-Type", "text/html")] <> headers)
+
+okPlainText :: forall m. MonadOkapi m => Headers -> Text.Text -> m Result
+okPlainText headers = ok ([("Content-Type", "text/plain")] <> headers) . LazyByteString.fromStrict . Text.encodeUtf8
+
+okJSON :: forall a m. (MonadOkapi m, Aeson.ToJSON a) => Headers -> a -> m Result
+okJSON headers = ok ([("Content-Type", "application/json")] <> headers) . Aeson.encode
+
+okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Result
+okLucid headers = okHTML headers . Lucid.renderBS . Lucid.toHtml
 
 -- File Responses
 
@@ -441,7 +456,7 @@ file status headers filePath = do
         pure $ ResultFile $ File status headers filePath
 
 okFile :: forall m. MonadOkapi m => Headers -> FilePath -> m Result
-okFile headers = file 200 headers
+okFile = file 200
 
 -- Event Source Responses
 
@@ -469,9 +484,6 @@ skip = Except.throwError Skip
 error :: forall a m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> m a
 error status headers = Except.throwError . Error . Response status headers
 
-error500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
-error500 = error 500
-
 error401 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
 error401 = error 401
 
@@ -483,6 +495,29 @@ error404 = error 404
 
 error422 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
 error422 = error 422
+
+error500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m a
+error500 = error 500
+
+-- GUARD FUNCTIONS
+
+guardError :: forall a m. MonadOkapi m => Natural.Natural -> Headers -> LazyByteString.ByteString -> Bool -> m ()
+guardError status headers body pred = if pred then pure () else error status headers body
+
+guard401 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> Bool -> m ()
+guard401 = guardError 401
+
+guard403 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> Bool -> m ()
+guard403 = guardError 403
+
+guard404 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> Bool -> m ()
+guard404 = guardError 404
+
+guard422 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> Bool -> m ()
+guard422 = guardError 422
+
+guard500 :: forall a m. MonadOkapi m => Headers -> LazyByteString.ByteString -> Bool -> m ()
+guard500 = guardError 500
 
 -- | Execute the next parser even if the first one throws an Error error
 (<!>) :: MonadOkapi m => m a -> m a -> m a

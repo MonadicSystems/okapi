@@ -1,6 +1,6 @@
 name:                okapi
-version:             0.1.0.0
-github:              "githubuser/okapi"
+version:             0.1.0.2
+github:              "MonadicSystems/okapi"
 license:             BSD3
 author:              "Monadic Systems LLC"
 maintainer:          "tech@monadic.systems"
@@ -18,7 +18,7 @@ extra-source-files:
 description:         Please see the README on GitHub at <https://github.com/githubuser/okapi#readme>
 
 dependencies:
-- aeson
+- aeson >= 1.4.7
 - base >= 4.7 && < 5
 - base64
 - bytestring
@@ -28,7 +28,7 @@ dependencies:
 - lucid
 - mmorph
 - mtl
-- random
+# - random
 - stm
 - text
 - transformers

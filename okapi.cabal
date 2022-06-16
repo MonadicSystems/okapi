@@ -5,11 +5,11 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           okapi
-version:        0.1.0.0
+version:        0.1.0.2
 description:    Please see the README on GitHub at <https://github.com/githubuser/okapi#readme>
 category:       Web
-homepage:       https://github.com/githubuser/okapi#readme
-bug-reports:    https://github.com/githubuser/okapi/issues
+homepage:       https://github.com/MonadicSystems/okapi#readme
+bug-reports:    https://github.com/MonadicSystems/okapi/issues
 author:         Monadic Systems LLC
 maintainer:     tech@monadic.systems
 copyright:      2022 Monadic Systems LLC
@@ -23,7 +23,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/okapi
+  location: https://github.com/MonadicSystems/okapi
 
 library
   exposed-modules:
@@ -36,7 +36,7 @@ library
   hs-source-dirs:
       src
   build-depends:
-      aeson
+      aeson >=1.4.7
     , base >=4.7 && <5
     , base64
     , bytestring
@@ -46,7 +46,6 @@ library
     , lucid
     , mmorph
     , mtl
-    , random
     , stm
     , text
     , transformers
@@ -68,7 +67,7 @@ test-suite okapi-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
+      aeson >=1.4.7
     , base >=4.7 && <5
     , base64
     , bytestring
@@ -79,7 +78,6 @@ test-suite okapi-test
     , mmorph
     , mtl
     , okapi
-    , random
     , stm
     , text
     , transformers
