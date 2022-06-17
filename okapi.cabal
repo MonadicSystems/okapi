@@ -30,6 +30,7 @@ library
       Okapi
       Okapi.EventSource
       Okapi.Function
+      Okapi.Routes
       Okapi.Type
   other-modules:
       Paths_okapi

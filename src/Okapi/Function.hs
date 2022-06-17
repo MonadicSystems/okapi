@@ -247,21 +247,6 @@ pathParam = do
           State.put $ segParsed state
           pure value
 
--- | Matches entire remaining path or fails
-{-
-path :: forall m. MonadOkapi m => [Text.Text] -> m ()
-path pathMatch = do
-  state <- State.get
-  logic state
-  where
-    logic :: State -> m ()
-    logic state
-      | getPath state /= pathMatch = Except.throwError Skip
-      | otherwise = do
-        State.put $ pathParsed state
-        pure ()
--}
-
 -- PARSING QUERY PARAMETERS
 
 -- | Parses a query parameter with the given name and returns the value as the given type
@@ -415,16 +400,6 @@ respond status headers body = do
 ok :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
 ok = respond 200
 
-notFound :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
-notFound = respond 404
-
-noContent :: forall a m. MonadOkapi m => Headers -> m Result
-noContent headers = respond 204 headers ""
-
--- TODO: Change type of URL?
-redirectTo :: forall a m. MonadOkapi m => Char8.ByteString -> m Result
-redirectTo url = respond 302 [("Location", url)] ""
-
 -- TODO: Use response builder?
 okHTML :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
 okHTML headers = ok ([("Content-Type", "text/html")] <> headers)
@@ -437,6 +412,16 @@ okJSON headers = ok ([("Content-Type", "application/json")] <> headers) . Aeson.
 
 okLucid :: forall a m. (MonadOkapi m, Lucid.ToHtml a) => Headers -> a -> m Result
 okLucid headers = okHTML headers . Lucid.renderBS . Lucid.toHtml
+
+notFound :: forall m. MonadOkapi m => Headers -> LazyByteString.ByteString -> m Result
+notFound = respond 404
+
+noContent :: forall a m. MonadOkapi m => Headers -> m Result
+noContent headers = respond 204 headers ""
+
+-- TODO: Change type of URL?
+redirectTo :: forall a m. MonadOkapi m => Char8.ByteString -> m Result
+redirectTo url = respond 302 [("Location", url)] ""
 
 -- File Responses
 

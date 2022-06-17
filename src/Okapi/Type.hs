@@ -10,7 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE StrictData #-}
+
 
 module Okapi.Type where
 
