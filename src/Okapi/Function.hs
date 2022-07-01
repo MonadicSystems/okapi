@@ -111,8 +111,8 @@ import Okapi.Type
     QueryItem,
     Request (..),
     Response (..),
-    File (..),
-    Result (..),
+    -- File (..),
+    -- Result (..),
     State (..),
   )
 import qualified Web.FormUrlEncoded as Web
