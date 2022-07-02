@@ -81,32 +81,8 @@ data ResponseBody =
 data Response = Response
   { responseStatus :: Natural.Natural,
     responseHeaders :: Headers,
-    responseBody :: ResponseBody -- LazyByteString.ByteString
+    responseBody :: ResponseBody
   }
-
-setResponseStatus :: Natural.Natural -> Response -> Response
-setResponseStatus status response = response { responseStatus = status }
-
-setResponseHeaders :: Headers -> Response -> Response
-setResponseHeaders headers response = response { responseHeaders = headers }
-
-setResponseHeader :: HTTP.Header -> Response -> Response
-setResponseHeader header response@Response{..} =
-  let (headerName, headerValue) = header
-  in response { responseHeaders = undefined }
-
-setResponseBody :: ResponseBody -> Response -> Response
-setResponseBody body response = response { responseBody = body }
-
-setResponseBodyRaw :: LazyByteString.ByteString -> Response -> Response
-setResponseBodyRaw raw = setResponseBody (ResponseBodyRaw raw)
-
-setResponseBodyFile :: FilePath -> Response -> Response
-setResponseBodyFile filePath = setResponseBody (ResponseBodyFile filePath)
-
-setResponseBodyEventSource :: EventSource.EventSource -> Response -> Response
-setResponseBodyEventSource eventSource =
-  setResponseBody (ResponseBodyEventSource eventSource)
 
 -- TODO: ADD Text field to skip fo 
 data Failure = Skip | Error Response

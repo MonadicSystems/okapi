@@ -2,7 +2,6 @@ module Okapi
   ( module Okapi.Function,
     OkapiT (..),
     MonadOkapi (..),
-    Result,
     module Okapi.EventSource
   )
 where

@@ -5,7 +5,7 @@ import Data.Text
 {-
 Use quasiquotation to automatically generate routes:
 
-[route|getFilms: GET /films -> getFilmsHandler|]
+[routes|GET /films -> getFilms|]
 
 getFilmsHandler :: Okapi Result
 getFilmsHandler = ...
