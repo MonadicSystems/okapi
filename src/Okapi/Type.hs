@@ -43,11 +43,16 @@ type QueryItem = (Text.Text, Maybe Text.Text)
 
 type Query = [QueryItem]
 
+type Cookie = (Text.Text, Text.Text)
+
+type Cookies = [Cookie]
+
 data State = State
   { stateRequest :: Request,
     -- , stateEventSourcePoolTVar :: TVar.TVar EventSource.EventSourcePool
     stateRequestMethodParsed :: Bool,
-    stateRequestBodyParsed :: Bool
+    stateRequestBodyParsed :: Bool,
+    stateResponded :: Bool
     -- , stateResulted :: Bool
   }
 

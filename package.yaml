@@ -23,6 +23,7 @@ dependencies:
 - base64
 - bytestring
 - containers
+- cookie
 - http-api-data
 - http-types
 - lucid

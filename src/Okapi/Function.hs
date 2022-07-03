@@ -38,6 +38,7 @@ module Okapi.Function
     -- HEADER PARSERS
     header,
     basicAuth,
+    cookies,
     -- BODY PARSERS
     bodyRaw,
     bodyJSON,
@@ -112,7 +113,7 @@ import Okapi.Type
     Request (..),
     Response (..),
     ResponseBody (..),
-    State (..),
+    State (..), Cookies,
   )
 import qualified Web.FormUrlEncoded as Web
 import qualified Web.HttpApiData as Web
@@ -122,6 +123,7 @@ import Data.Functor ((<&>))
 import Control.Monad (guard)
 import Data.Function ((&))
 import Data.Text.Encoding.Base64
+import qualified Web.Cookie as Cookie
 
 -- FOR RUNNING OKAPI
 
@@ -156,6 +158,7 @@ waiRequestToState waiRequest =
       stateRequest = Request {..}
       stateRequestMethodParsed = False
       stateRequestBodyParsed = False
+      stateResponded = False
    in State {..}
 
 responseToWaiApp :: Response -> Wai.Application
@@ -196,6 +199,7 @@ patch = method HTTP.methodPatch
 method :: forall m. MonadOkapi m => HTTP.Method -> m ()
 method method = do
   state <- State.get
+  guard (not $ isResponded state)
   guard (not $ isMethodParsed state)
   guard (methodMatches state method)
   State.put $ methodParsed state
@@ -205,6 +209,7 @@ method method = do
 pathSegWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
 pathSegWith predicate = do
   state <- State.get
+  guard (not $ isResponded state)
   guard (isMethodParsed state)
   guard (segMatches state predicate)
   State.put $ segParsed state
@@ -222,6 +227,7 @@ path = mapM_ pathSeg
 pathParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => m a
 pathParam = do
   state <- State.get
+  guard (not $ isResponded state)
   guard (isMethodParsed state)
   case getSeg state >>= Web.parseUrlPieceMaybe of
     Nothing    -> skip
@@ -235,6 +241,7 @@ pathParam = do
 queryParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => Text.Text -> m a
 queryParam key = do
   state <- State.get
+  guard (not $ isResponded state)
   guard (isMethodParsed state)
   guard (isPathParsed state)
   case getQueryItem state (key ==) of
@@ -250,6 +257,7 @@ queryParam key = do
 queryFlag :: forall m. MonadOkapi m => Text.Text -> m Bool
 queryFlag key = do
   state <- State.get
+  guard (not $ isResponded state)
   guard (isMethodParsed state)
   guard (isPathParsed state)
   case getQueryItem state (key ==) of
@@ -261,21 +269,21 @@ queryFlag key = do
 -- PARSING HEADERS
 
 -- TODO: Any checks required??
-header :: forall m. MonadOkapi m => HTTP.HeaderName -> m Text.Text
+header :: forall m. MonadOkapi m => HTTP.HeaderName -> m Char8.ByteString
 header headerName = do
   state <- State.get
+  guard (not $ isResponded state)
   case getHeader state headerName of
     Nothing -> skip
     Just header@(name, value) -> do
       State.put $ headerParsed state header
-      pure $ Text.decodeUtf8 value
+      pure value
 
 basicAuth :: forall m. MonadOkapi m => m (Text.Text, Text.Text)
 basicAuth = do
-  IO.liftIO $ print "Attempting to get basic auth from headers"
   state <- State.get
   authValue <- header "Authorization"
-  case Text.words authValue of
+  case Text.words $ Text.decodeUtf8 authValue of
     ["Basic", encodedCreds] ->
       case decodeBase64 encodedCreds of
         Left _ -> skip
@@ -285,6 +293,11 @@ basicAuth = do
             _ -> skip
     _ -> skip
 
+cookies :: forall m. MonadOkapi m => m Cookies
+cookies = do
+  cookiesValue <- header "Cookie"
+  pure $ Cookie.parseCookiesText cookiesValue
+
 -- PARSING BODY
 
 -- TODO: Check HEADERS for correct content type?
@@ -293,6 +306,7 @@ basicAuth = do
 bodyRaw :: forall m. MonadOkapi m => m LazyByteString.ByteString
 bodyRaw = do
   state <- State.get
+  guard (not $ isResponded state)
   guard (isMethodParsed state)
   guard (isPathParsed state)
   State.put $ bodyParsed state
@@ -312,22 +326,15 @@ bodyForm = do
 
 -- RESPONSE FUNCTIONS
 
--- TODO: Add Responded already to state so you can't respond twice
 respond :: forall m. MonadOkapi m => Response -> m Response
 respond response = do
-  IO.liftIO $ print "Attempting to respond from Servo"
   state <- State.get
-  logic state
-  where
-    logic :: State -> m Response
-    logic state
-      | not $ isMethodParsed state = Except.throwError Skip
-      | not $ isPathParsed state = Except.throwError Skip
-      | not $ isQueryParamsParsed state = Except.throwError Skip
-      -- not $ isBodyParsed request = Except.throwError Skip
-      | otherwise = do
-        IO.liftIO $ print "Responded from servo, passing off to WAI"
-        pure response
+  guard (isMethodParsed state)
+  guard (isPathParsed state)
+  -- guard (isQueryParamsParsed state)
+  guard (not $ isResponded state)
+  State.put $ responded state
+  pure response
 
 ok :: forall m. MonadOkapi m => m Response
 ok =
@@ -366,6 +373,8 @@ setResponseHeader header response@Response{..} =
 
 setResponseBody :: ResponseBody -> Response -> Response
 setResponseBody body response = response { responseBody = body }
+
+-- setResponseCookie
 
 -- TODO: Use response builder?
 okHTML :: forall m. MonadOkapi m => LazyByteString.ByteString -> m Response
@@ -465,7 +474,7 @@ optionError :: MonadOkapi m => a -> m a -> m a
 optionError value parser = do
   mbValue <- optionalError parser
   case mbValue of
-    Nothing -> pure value
+    Nothing     -> pure value
     Just value' -> pure value'
 
 -- PARSING GUARDS AND SWITCHES
@@ -481,6 +490,9 @@ isQueryParamsParsed State {..} = Prelude.null $ requestQuery stateRequest
 
 isBodyParsed :: State -> Bool
 isBodyParsed State {..} = stateRequestBodyParsed
+
+isResponded :: State -> Bool
+isResponded State {..} = stateResponded
 
 methodMatches :: State -> HTTP.Method -> Bool
 methodMatches State {..} method = method == requestMethod stateRequest
@@ -522,6 +534,9 @@ headerParsed state header = state {stateRequest = (stateRequest state) {requestH
 
 bodyParsed :: State -> State
 bodyParsed state = state {stateRequestBodyParsed = True}
+
+responded :: State -> State
+responded state = state {stateResponded = True}
 
 -- HELPERS
 
