@@ -30,6 +30,7 @@ dependencies:
 - mmorph
 - mtl
 # - random
+- parser-combinators
 - stm
 - text
 - transformers

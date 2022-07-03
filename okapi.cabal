@@ -48,6 +48,7 @@ library
     , lucid
     , mmorph
     , mtl
+    , parser-combinators
     , stm
     , text
     , transformers
@@ -81,6 +82,7 @@ test-suite okapi-test
     , mmorph
     , mtl
     , okapi
+    , parser-combinators
     , stm
     , text
     , transformers

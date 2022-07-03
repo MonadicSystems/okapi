@@ -113,7 +113,8 @@ import Okapi.Type
     Request (..),
     Response (..),
     ResponseBody (..),
-    State (..), Cookies,
+    State (..),
+    Cookies,
   )
 import qualified Web.FormUrlEncoded as Web
 import qualified Web.HttpApiData as Web
@@ -127,22 +128,22 @@ import qualified Web.Cookie as Cookie
 
 -- FOR RUNNING OKAPI
 
-runOkapi :: Monad m => (forall a. m a -> IO a) -> Response -> Int -> OkapiT m Response -> IO ()
-runOkapi hoister defaultResponse port okapiT = do
+runOkapi :: Monad m => (forall a. m a -> IO a) -> Natural.Natural -> Headers -> LazyByteString.ByteString -> Int -> OkapiT m Response -> IO ()
+runOkapi hoister defaultStatus defaultHeaders defaultBody port okapiT = do
   print $ "Running Okapi App on port " <> show port
-  Warp.run port $ makeOkapiApp hoister defaultResponse okapiT
+  Warp.run port $ makeOkapiApp hoister defaultStatus defaultHeaders defaultBody okapiT
 
-runOkapiTLS :: Monad m => (forall a. m a -> IO a) -> Response -> Warp.TLSSettings -> Warp.Settings -> OkapiT m Response -> IO ()
-runOkapiTLS hoister defaultResponse tlsSettings settings okapiT = do
+runOkapiTLS :: Monad m => (forall a. m a -> IO a) -> Natural.Natural -> Headers -> LazyByteString.ByteString -> Warp.TLSSettings -> Warp.Settings -> OkapiT m Response -> IO ()
+runOkapiTLS hoister defaultStatus defaultHeaders defaultBody tlsSettings settings okapiT = do
   print "Running servo on port 43"
-  Warp.runTLS tlsSettings settings $ makeOkapiApp hoister defaultResponse okapiT
+  Warp.runTLS tlsSettings settings $ makeOkapiApp hoister defaultStatus defaultHeaders defaultBody okapiT
 
-makeOkapiApp :: Monad m => (forall a. m a -> IO a) -> Response -> OkapiT m Response -> Wai.Application
-makeOkapiApp hoister defaultResponse okapiT waiRequest respond = do
+makeOkapiApp :: Monad m => (forall a. m a -> IO a) -> Natural.Natural -> Headers -> LazyByteString.ByteString -> OkapiT m Response -> Wai.Application
+makeOkapiApp hoister defaultStatus defaultHeaders defaultBody okapiT waiRequest respond = do
   (eitherFailureOrResponse, _state) <- (StateT.runStateT . ExceptT.runExceptT . unOkapiT $ Morph.hoist hoister okapiT) (waiRequestToState {-eventSourcePoolTVar-} waiRequest)
   let response =
         case eitherFailureOrResponse of
-          Left Skip                  -> defaultResponse
+          Left Skip                  -> Response defaultStatus defaultHeaders (ResponseBodyRaw defaultBody)
           Left (Error errorResponse) -> errorResponse
           Right succesfulResponse    -> succesfulResponse
   responseToWaiApp response waiRequest respond
