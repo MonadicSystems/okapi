@@ -2,9 +2,10 @@ module Okapi
   ( -- MODULES
     module Okapi.Synonym,
     module Okapi.Parser,
+    module Okapi.Response,
     -- TYPES
-    Response (..),
     State,
+    Request,
     ToSSE (..),
     Event (..),
     EventSource,

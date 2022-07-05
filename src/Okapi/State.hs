@@ -32,7 +32,6 @@ import Okapi.Synonym
 
 data State = State
   { stateRequest :: Request,
-    -- , stateEventSourcePoolTVar :: TVar.TVar Event.EventSourcePool
     stateRequestMethodParsed :: Bool,
     stateRequestBodyParsed :: Bool,
     stateResponded :: Bool
