@@ -121,7 +121,7 @@ import qualified Web.HttpApiData as Web
 import Prelude hiding (error, head)
 import Network.Wai (ResponseReceived)
 import Data.Functor ((<&>))
-import Control.Monad (guard)
+import Control.Monad (guard, (>=>), MonadPlus)
 import Data.Function ((&))
 import Data.Text.Encoding.Base64
 import qualified Web.Cookie as Cookie
@@ -197,92 +197,101 @@ options = method HTTP.methodOptions
 patch :: forall m. MonadOkapi m => m ()
 patch = method HTTP.methodPatch
 
+anyMethod :: forall m. MonadOkapi m => m ()
+anyMethod = parseMethod >> pure ();
+
 method :: forall m. MonadOkapi m => HTTP.Method -> m ()
 method method = do
-  state <- State.get
-  guard (not $ isResponded state)
-  guard (not $ isMethodParsed state)
-  guard (methodMatches state method)
-  State.put $ methodParsed state
+  method' <- parseMethod
+  if method == method'
+    then pure ()
+    else skip
+
+-- method :: forall m. MonadOkapi m => HTTP.Method -> m ()
+-- method method = do
+--   state <- State.get
+--   guard (not $ isResponded state)
+--   guard (not $ isMethodParsed state)
+--   guard (methodMatches state method)
+--   State.put $ methodParsed state
 
 -- PARSING PATHS
 
-pathSegWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
-pathSegWith predicate = do
-  state <- State.get
-  guard (not $ isResponded state)
-  guard (isMethodParsed state)
-  guard (segMatches state predicate)
-  State.put $ segParsed state
+matchPathSegWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
+matchPathSegWith predicate = do
+  pathSeg <- parsePathSeg
+  if predicate pathSeg
+    then pure ()
+    else skip
+
+-- pathSegWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
+-- pathSegWith predicate = do
+--   state <- State.get
+--   guard (not $ isResponded state)
+--   guard (isMethodParsed state)
+--   guard (segMatches state predicate)
+--   State.put $ segParsed state
 
 -- | Parses a single path segment matching the given text and discards it
-pathSeg :: forall m. MonadOkapi m => Text.Text -> m ()
-pathSeg goal = pathSegWith (goal ==)
+matchPathSeg :: forall m. MonadOkapi m => Text.Text -> m ()
+matchPathSeg goal = matchPathSegWith (goal ==)
 
 -- | Parses mutiple segments matching the order of the given list and discards them
 -- | TODO: Needs testing. May not have the correct behavior
-path :: forall m. MonadOkapi m => [Text.Text] -> m ()
-path = mapM_ pathSeg
+matchPath :: forall m. MonadOkapi m => [Text.Text] -> m ()
+matchPath = mapM_ pathSeg
 
 -- | Parses a single seg segment, and returns the parsed seg segment as a value of the given type
 pathParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => m a
 pathParam = do
-  state <- State.get
-  guard (not $ isResponded state)
-  guard (isMethodParsed state)
-  case getSeg state >>= Web.parseUrlPieceMaybe of
-    Nothing    -> skip
-    Just value -> do
-      State.put $ segParsed state
-      pure value
+  pathSeg <- parsePathSeg
+  maybe skip pure (Web.parseUrlPieceMaybe pathSeg)
 
 -- PARSING QUERY PARAMETERS
+queryParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => Text.Text -> m a
+queryParam queryItemName = do
+  (_, queryItemValue) <- parseQueryItem queryItemName
+  maybe skip pure (Web.parseQueryParamMaybe queryItemValue)
 
 -- | Parses a query parameter with the given name and returns the value as the given type
-queryParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => Text.Text -> m a
-queryParam key = do
-  state <- State.get
-  guard (not $ isResponded state)
-  guard (isMethodParsed state)
-  guard (isPathParsed state)
-  case getQueryItem state (key ==) of
-    Nothing -> skip
-    Just queryItem -> case queryItem of
-      (_, Nothing) -> skip
-      (_, Just param) -> case Web.parseQueryParamMaybe param of
-        Nothing -> skip
-        Just value -> do
-          State.put $ queryParamParsed state queryItem
-          pure value
+-- queryParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => Text.Text -> m a
+-- queryParam key = do
+--   state <- State.get
+--   guard (not $ isResponded state)
+--   guard (isMethodParsed state)
+--   guard (isPathParsed state)
+--   case getQueryItem state (key ==) of
+--     Nothing -> skip
+--     Just queryItem -> case queryItem of
+--       (_, Nothing) -> skip
+--       (_, Just param) -> case Web.parseQueryParamMaybe param of
+--         Nothing -> skip
+--         Just value -> do
+--           State.put $ queryParamParsed state queryItem
+--           pure value
 
-queryFlag :: forall m. MonadOkapi m => Text.Text -> m Bool
-queryFlag key = do
-  state <- State.get
-  guard (not $ isResponded state)
-  guard (isMethodParsed state)
-  guard (isPathParsed state)
-  case getQueryItem state (key ==) of
-    Nothing -> pure False
-    Just queryItem -> do
-      State.put $ queryParamParsed state queryItem
-      pure True
+queryFlag :: forall a m. MonadOkapi m => Text.Text -> m a ->  m a
+queryFlag queryItemName action = parseQueryItem >> action
 
 -- PARSING HEADERS
 
 -- TODO: Any checks required??
 header :: forall m. MonadOkapi m => HTTP.HeaderName -> m Char8.ByteString
 header headerName = do
-  state <- State.get
-  guard (not $ isResponded state)
-  case getHeader state headerName of
-    Nothing -> skip
-    Just header@(name, value) -> do
-      State.put $ headerParsed state header
-      pure value
+  (_headerName, headerValue) <- parseHeader headerName
+  pure headerValue
+-- header :: forall m. MonadOkapi m => HTTP.HeaderName -> m Char8.ByteString
+-- header headerName = do
+--   state <- State.get
+--   guard (not $ isResponded state)
+--   case getHeader state headerName of
+--     Nothing -> skip
+--     Just header@(name, value) -> do
+--       State.put $ headerParsed state header
+--       pure value
 
 basicAuth :: forall m. MonadOkapi m => m (Text.Text, Text.Text)
 basicAuth = do
-  state <- State.get
   authValue <- header "Authorization"
   case Text.words $ Text.decodeUtf8 authValue of
     ["Basic", encodedCreds] ->
@@ -305,13 +314,16 @@ cookies = do
 -- TODO: Check METHOD for correct HTTP method?
 
 bodyRaw :: forall m. MonadOkapi m => m LazyByteString.ByteString
-bodyRaw = do
-  state <- State.get
-  guard (not $ isResponded state)
-  guard (isMethodParsed state)
-  guard (isPathParsed state)
-  State.put $ bodyParsed state
-  IO.liftIO $ getRequestBody state
+bodyRaw = parseBody
+
+-- bodyRaw :: forall m. MonadOkapi m => m LazyByteString.ByteString
+-- bodyRaw = do
+--   state <- State.get
+--   guard (not $ isResponded state)
+--   guard (isMethodParsed state)
+--   guard (isPathParsed state)
+--   State.put $ bodyParsed state
+--   IO.liftIO $ getRequestBody state
 
 bodyJSON :: forall a m. (MonadOkapi m, Aeson.FromJSON a) => m a
 bodyJSON = do
@@ -362,59 +374,99 @@ redirectTo url =
     responseBody = ResponseBodyRaw ""
   in respond Response {..}
 
-setResponseStatus :: Natural.Natural -> Response -> Response
-setResponseStatus status response = response { responseStatus = status }
+-- setResponseStatus :: Natural.Natural -> Response -> Response
+-- setResponseStatus status response = response { responseStatus = status }
 
-setResponseHeaders :: Headers -> Response -> Response
-setResponseHeaders headers response = response { responseHeaders = headers }
+-- setResponseHeaders :: Headers -> Response -> Response
+-- setResponseHeaders headers response = response { responseHeaders = headers }
 
-setResponseHeader :: HTTP.Header -> Response -> Response
-setResponseHeader header response@Response{..} =
-  response { responseHeaders = update header responseHeaders }
+-- setResponseHeader :: HTTP.Header -> Response -> Response
+-- setResponseHeader header response@Response{..} =
+--   response { responseHeaders = update header responseHeaders }
 
-setResponseBody :: ResponseBody -> Response -> Response
-setResponseBody body response = response { responseBody = body }
+-- setResponseBody :: ResponseBody -> Response -> Response
+-- setResponseBody body response = response { responseBody = body }
+
+modifyResponseStatus :: forall m. MonadOkapi m => Natural.Natural -> Response -> m Response
+modifyResponseStatus status response = pure $ response { responseStatus = status }
+
+modifyResponseHeaders :: forall m. MonadOkapi m => Headers -> Response -> m Response
+modifyResponseHeaders headers response = pure $ response { responseHeaders = headers }
+
+modifyResponseHeader :: forall m. MonadOkapi m => HTTP.Header -> Response -> m Response
+modifyResponseHeader header response@Response{..} =
+  pure $ response { responseHeaders = update header responseHeaders }
+
+modifyResponseBody :: forall m. MonadOkapi m => ResponseBody -> Response -> m Response
+modifyResponseBody body response = pure $ response { responseBody = body }
 
 -- setResponseCookie
+(>>=>>) :: forall a b c m. Monad m => (a -> m b) -> (b -> m c) -> (a -> m c)
+(>>=>>) = (>=>)
+infixr 9 >>=>>
 
--- TODO: Use response builder?
 okHTML :: forall m. MonadOkapi m => LazyByteString.ByteString -> m Response
 okHTML html =
-  ok <&>
-  setResponseHeader ("Content-Type", "text/html") .
-  setResponseBody (ResponseBodyRaw html)
+  ok >>=
+  modifyResponseHeader ("Content-Type", "text/html") >>=>>
+  modifyResponseBody (ResponseBodyRaw html)
 
 okPlainText :: forall m. MonadOkapi m => Text.Text -> m Response
 okPlainText text =
   let raw = LazyByteString.fromStrict . Text.encodeUtf8 $ text
   in
-    ok <&>
-    setResponseHeader ("Content-Type", "text/plain") .
-    setResponseBody (ResponseBodyRaw raw)
+    ok >>=
+    modifyResponseHeader ("Content-Type", "text/plain") >>=>>
+    modifyResponseBody (ResponseBodyRaw raw)
+
+-- TODO: Use response builder?
+-- okHTML :: forall m. MonadOkapi m => LazyByteString.ByteString -> m Response
+-- okHTML html =
+--   ok <&>
+--   setResponseHeader ("Content-Type", "text/html") .
+--   setResponseBody (ResponseBodyRaw html)
+
+-- okPlainText :: forall m. MonadOkapi m => Text.Text -> m Response
+-- okPlainText text =
+--   let raw = LazyByteString.fromStrict . Text.encodeUtf8 $ text
+--   in
+--     ok <&>
+--     setResponseHeader ("Content-Type", "text/plain") .
+--     setResponseBody (ResponseBodyRaw raw)
 
 okJSON :: forall m a. (MonadOkapi m, Aeson.ToJSON a) => a -> m Response
 okJSON value =
   let raw = Aeson.encode value
   in
-    ok <&>
-    setResponseHeader ("Content-Type", "application/json") .
-    setResponseBody (ResponseBodyRaw raw)
+    ok >>=
+    modifyResponseHeader ("Content-Type", "application/json") >>=>>
+    modifyResponseBody (ResponseBodyRaw raw)
 
 okLucid :: forall m a. (MonadOkapi m, Lucid.ToHtml a) => a -> m Response
 okLucid value =
   let raw = Lucid.renderBS . Lucid.toHtml $ value
   in okHTML raw
 
--- TODO: setResponseHeaders to octet/binary or something?
 okFile :: forall m. MonadOkapi m => FilePath -> m Response
 okFile filePath =
-  ok <&>
-  setResponseBody (ResponseBodyFile filePath)
+  ok >>=
+  modifyResponseBody (ResponseBodyFile filePath)
 
 okEventSource :: forall m. MonadOkapi m => EventSource.EventSource -> m Response
 okEventSource eventSource =
-  ok <&>
-  setResponseBody (ResponseBodyEventSource eventSource)
+  ok >>=
+  modifyResponseBody (ResponseBodyEventSource eventSource)
+
+-- TODO: setResponseHeaders to octet/binary or something?
+-- okFile :: forall m. MonadOkapi m => FilePath -> m Response
+-- okFile filePath =
+--   ok <&>
+--   setResponseBody (ResponseBodyFile filePath)
+
+-- okEventSource :: forall m. MonadOkapi m => EventSource.EventSource -> m Response
+-- okEventSource eventSource =
+--   ok <&>
+--   setResponseBody (ResponseBodyEventSource eventSource)
 
 -- ERROR FUNCTIONS
 
@@ -478,66 +530,114 @@ optionError value parser = do
     Nothing     -> pure value
     Just value' -> pure value'
 
--- PARSING GUARDS AND SWITCHES
+-- State Checks
 
-isMethodParsed :: State -> Bool
-isMethodParsed State {..} = stateRequestMethodParsed
+methodParsed :: MonadOkapi m => m Bool
+methodParsed = State.gets stateRequestMethodParsed
 
-isPathParsed :: State -> Bool
-isPathParsed State {..} = Prelude.null $ requestPath stateRequest
+pathParsed :: MonadOkapi m => m Bool
+pathParsed = State.gets (Prelude.null . requestPath . stateRequest)
 
-isQueryParamsParsed :: State -> Bool
-isQueryParamsParsed State {..} = Prelude.null $ requestQuery stateRequest
+queryParsed :: MonadOkapi m => m Bool
+queryParsed = State.gets (Prelude.null . requestQuery . stateRequest)
 
-isBodyParsed :: State -> Bool
-isBodyParsed State {..} = stateRequestBodyParsed
+headersParsed :: MonadOkapi m => m Bool
+headersParsed = State.gets (Prelude.null . requestHeaders . stateRequest)
 
-isResponded :: State -> Bool
-isResponded State {..} = stateResponded
+bodyParsed :: MonadOkapi m => m Bool
+bodyParsed = State.gets stateRequestBodyParsed
 
-methodMatches :: State -> HTTP.Method -> Bool
-methodMatches State {..} method = method == requestMethod stateRequest
+-- isBodyParsed :: State -> Bool
+-- isBodyParsed State {..} = stateRequestBodyParsed
 
-segMatches :: State -> (Text.Text -> Bool) -> Bool
-segMatches state predicate =
-  maybe False predicate $ getSeg state
+-- isResponded :: State -> Bool
+-- isResponded State {..} = stateResponded
 
-getPath :: State -> [Text.Text]
-getPath State {..} = requestPath stateRequest
+-- methodMatches :: State -> HTTP.Method -> Bool
+-- methodMatches State {..} method = method == requestMethod stateRequest
 
-getSeg :: State -> Maybe Text.Text
-getSeg State {..} = safeHead (requestPath stateRequest)
+-- segMatches :: State -> (Text.Text -> Bool) -> Bool
+-- segMatches state predicate =
+--   maybe False predicate $ getSeg state
 
-getQueryItem :: State -> (Text.Text -> Bool) -> Maybe QueryItem
-getQueryItem State {..} predicate = Foldable.find (\(key, _) -> predicate key) (requestQuery stateRequest)
+-- PRIMITIVES
 
-getHeader :: State -> HTTP.HeaderName -> Maybe HTTP.Header
-getHeader State {..} key = Foldable.find (\(key', _) -> key == key') (requestHeaders stateRequest)
+parseMethod :: MonadOkapi m => m HTTP.Method
+parseMethod = unlessM methodParsed $ do
+  method <- State.gets (requestMethod . stateRequest)
+  State.modify (\state -> state {stateRequestMethodParsed = True})
+  pure method
 
-getRequestBody :: State -> IO LazyByteString.ByteString
-getRequestBody State {..} = requestBody stateRequest
+parsePathSeg :: MonadOkapi m => m Text.Text
+parsePathSeg = do
+  maybePathSeg <- State.gets (safeHead . requestPath . stateRequest)
+  case maybePathSeg of
+    Nothing -> skip
+    Just pathSeg -> do
+      State.modify (\state -> state {stateRequest = (stateRequest state) {requestPath = Prelude.drop 1 $ requestPath $ stateRequest state}})
+      pure pathSeg
 
-methodParsed :: State -> State
-methodParsed state = state {stateRequestMethodParsed = True}
+parseQueryItem :: MonadOkapi m => Text.Text -> m QueryItem
+parseQueryItem queryItemName = do
+  maybeQueryItem <- State.gets (Foldable.find (\(queryItemName', _) -> queryItemName == queryItemName') . requestQuery . stateRequest)
+  case maybeQueryItem of
+    Nothing        -> skip
+    Just queryItem -> do
+      State.modify (\state -> state {stateRequest = (stateRequest state) {requestQuery = List.delete queryItem $ requestQuery $ stateRequest state}})
+      pure queryItem
 
-segParsed :: State -> State
-segParsed state = state {stateRequest = (stateRequest state) {requestPath = Prelude.drop 1 $ requestPath $ stateRequest state}}
+parseHeader :: MonadOkapi m => HTTP.HeaderName -> m HTTP.Header
+parseHeader headerName = do
+  maybeHeader <- State.gets (Foldable.find (\(headerName', _) -> headerName == headerName') . requestHeaders . stateRequest)
+  case maybeHeader of
+    Nothing -> skip
+    Just header -> do
+      State.modify (\state -> state {stateRequest = (stateRequest state) {requestHeaders = List.delete header $ requestHeaders $ stateRequest state}})
+      pure header
 
-pathParsed :: State -> State
-pathParsed state = state {stateRequest = (stateRequest state) {requestPath = []}}
+parseBody :: MonadOkapi m => m LazyByteString.ByteString
+parseBody State {..} = unlessM bodyParsed $ do
+  bodyRef <- State.get (requestBody . stateRequest)
+  body <- liftIO bodyRef
+  State.modify (\state -> state {stateRequestBodyParsed = True})
+  pure body
 
-queryParamParsed :: State -> QueryItem -> State
-queryParamParsed state queryItem = state {stateRequest = (stateRequest state) {requestQuery = List.delete queryItem $ requestQuery $ stateRequest state}}
+-- getPath :: MonadOkapi m => m [Text.Text]
+-- getPath State {..} = requestPath stateRequest
 
--- TODO: Don't List.delete header??
-headerParsed :: State -> HTTP.Header -> State
-headerParsed state header = state {stateRequest = (stateRequest state) {requestHeaders = List.delete header $ requestHeaders $ stateRequest state}}
+-- getPathSeg :: MonadOkapi m => m (Maybe Text.Text)
+-- getPathSeg State {..} = safeHead (requestPath stateRequest)
 
-bodyParsed :: State -> State
-bodyParsed state = state {stateRequestBodyParsed = True}
+-- getQueryItem :: MonadOkapi m => (Text.Text -> Bool) -> m (Maybe QueryItem)
+-- getQueryItem State {..} predicate = Foldable.find (\(key, _) -> predicate key) (requestQuery stateRequest)
 
-responded :: State -> State
-responded state = state {stateResponded = True}
+-- getHeader :: MonadOkapi m => HTTP.HeaderName -> m (Maybe HTTP.Header)
+-- getHeader State {..} key = Foldable.find (\(key', _) -> key == key') (requestHeaders stateRequest)
+
+-- getRequestBody :: MonadOkapi m => m LazyByteString.ByteString
+-- getRequestBody State {..} = requestBody stateRequest
+
+-- methodParsed :: State -> State
+-- methodParsed state = state {stateRequestMethodParsed = True}
+
+-- segParsed :: State -> State
+-- segParsed state = state {stateRequest = (stateRequest state) {requestPath = Prelude.drop 1 $ requestPath $ stateRequest state}}
+
+-- pathParsed :: State -> State
+-- pathParsed state = state {stateRequest = (stateRequest state) {requestPath = []}}
+
+-- queryParamParsed :: State -> QueryItem -> State
+-- queryParamParsed state queryItem = state {stateRequest = (stateRequest state) {requestQuery = List.delete queryItem $ requestQuery $ stateRequest state}}
+
+-- -- TODO: Don't List.delete header??
+-- headerParsed :: State -> HTTP.Header -> State
+-- headerParsed state header = state {stateRequest = (stateRequest state) {requestHeaders = List.delete header $ requestHeaders $ stateRequest state}}
+
+-- bodyParsed :: State -> State
+-- bodyParsed state = state {stateRequestBodyParsed = True}
+
+-- responded :: State -> State
+-- responded state = state {stateResponded = True}
 
 -- HELPERS
 
@@ -561,3 +661,6 @@ update pair@(key, value) (pair'@(key', value'):ps) =
   if key == key'
     then pair : ps
     else pair' : update pair ps
+
+guardM :: MonadPlus m => m Bool -> m ()
+guardM f = guard =<< f

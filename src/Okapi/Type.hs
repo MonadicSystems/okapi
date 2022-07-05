@@ -89,6 +89,8 @@ data Response = Response
     responseBody :: ResponseBody
   }
 
+-- Add DefaultResponse type
+
 -- TODO: ADD Text field to skip fo 
 data Failure = Skip | Error Response
 
