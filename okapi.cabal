@@ -29,7 +29,6 @@ library
   exposed-modules:
       Okapi
       Okapi.Event
-      Okapi.Interface
       Okapi.Parser
       Okapi.Response
       Okapi.Routes
