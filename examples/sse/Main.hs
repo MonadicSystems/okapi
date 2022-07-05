@@ -21,11 +21,11 @@ main = do
 
 type Okapi a = OkapiT IO a
 
-api :: EventSource -> Okapi Result
+api :: Event -> Okapi Result
 api eventSource = get >> index <|> (sse eventSource)
   where
     index :: Okapi Result
     index = okFile [("Content-Type", "text/html")] "examples/sse/sse.html"
 
-    sse :: EventSource -> Okapi Result
+    sse :: Event -> Okapi Result
     sse eventSource = seg "events" >> connectEventSource eventSource

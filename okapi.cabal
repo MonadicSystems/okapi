@@ -28,10 +28,13 @@ source-repository head
 library
   exposed-modules:
       Okapi
-      Okapi.EventSource
-      Okapi.Function
+      Okapi.Event
+      Okapi.Interface
+      Okapi.Parser
+      Okapi.Response
       Okapi.Routes
-      Okapi.Type
+      Okapi.State
+      Okapi.Synonym
   other-modules:
       Paths_okapi
   hs-source-dirs:
@@ -43,6 +46,7 @@ library
     , bytestring
     , containers
     , cookie
+    , extra
     , http-api-data
     , http-types
     , lucid
@@ -76,6 +80,7 @@ test-suite okapi-test
     , bytestring
     , containers
     , cookie
+    , extra
     , http-api-data
     , http-types
     , lucid

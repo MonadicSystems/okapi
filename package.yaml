@@ -24,6 +24,7 @@ dependencies:
 - bytestring
 - containers
 - cookie
+- extra
 - http-api-data
 - http-types
 - lucid

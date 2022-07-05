@@ -11,7 +11,7 @@
     <script>
         const output = document.getElementById("output");
 
-        const src = new EventSource("/events");
+        const src = new Event("/events");
 
         src.onmessage = function (msg) {
             console.log(msg.data);

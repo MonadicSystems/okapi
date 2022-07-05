@@ -58,7 +58,7 @@ data Env = Env
   { envWaitPool :: WaitPool,
     envConfirmedPool :: ConfirmedPool,
     envMatches :: Set Match,
-    envEventSource :: EventSource
+    envEventSource :: Event
   }
 
 newtype Match = Match (Text, Text) deriving (Show, Ord)
@@ -110,7 +110,7 @@ confirmer = sendConfirmMessages
           eventSource <- atomically $ readEventSource envRef
           forM_ (Set.toList waitPool) (sendConfirmMessage eventSource)
 
-    sendConfirmMessage :: EventSource -> Text -> IO ()
+    sendConfirmMessage :: Event -> Text -> IO ()
     sendConfirmMessage eventSource playerName = Okapi.sendEvent eventSource $ Event (Just $ "confirm-" <> playerName) Nothing ""
 
 matchmaker :: TVar Env -> IO ()
@@ -130,7 +130,7 @@ matchmaker = tryNewMatch
           sendStartEvents eventSource p1 p2
         else pure ()
 
-    sendStartEvents :: EventSource -> Text -> Text -> IO ()
+    sendStartEvents :: Event -> Text -> Text -> IO ()
     sendStartEvents eventSource p1Name p2Name = do
       let event1 = Event (Just $ "init-" <> p1Name) Nothing $ renderBS $ toHtml startingBoard
           event2 = Event (Just $ "init-" <> p2Name) Nothing $ renderBS $ toHtml startingBoard
@@ -163,7 +163,7 @@ readConfirmedPool = readFromEnvTVar envConfirmedPool
 readMatches :: TVar Env -> STM (Set Match)
 readMatches = readFromEnvTVar envMatches
 
-readEventSource :: TVar Env -> STM EventSource
+readEventSource :: TVar Env -> STM Event
 readEventSource = readFromEnvTVar envEventSource
 
 modfyEnvTVar :: (Env -> Env) -> TVar Env -> STM ()

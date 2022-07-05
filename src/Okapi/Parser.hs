@@ -10,95 +10,43 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE RecordWildCards #-}
 
-
-module Okapi.Type where
+module Okapi.Parser where
 
 import qualified Control.Applicative as Applicative
 import qualified Control.Concurrent.Chan as Chan
--- import qualified Network.Wai.EventSource as EventSource
-
 import qualified Control.Concurrent.STM.TVar as TVar
 import qualified Control.Monad as Monad
 import qualified Control.Monad.Except as Except
+import Control.Monad.IO.Class (liftIO)
 import qualified Control.Monad.IO.Class as IO
 import qualified Control.Monad.Morph as Morph
 import qualified Control.Monad.Reader.Class as Reader
+import qualified Control.Monad.State as State
 import qualified Control.Monad.State.Class as State
 import qualified Control.Monad.Trans.Except as ExceptT
 import qualified Control.Monad.Trans.State.Strict as StateT
 import qualified Data.ByteString.Lazy as LazyByteString
+import qualified Data.Foldable as Foldable
+import qualified Data.List as List
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified GHC.Natural as Natural
 import qualified Network.HTTP.Types as HTTP
-import qualified Okapi.EventSource as EventSource
-
-type Path = [Text.Text]
-
-type Headers = [HTTP.Header]
-
-type QueryItem = (Text.Text, Maybe Text.Text)
-
-type Query = [QueryItem]
-
-type Cookie = (Text.Text, Text.Text)
-
-type Cookies = [Cookie]
-
-data State = State
-  { stateRequest :: Request,
-    -- , stateEventSourcePoolTVar :: TVar.TVar EventSource.EventSourcePool
-    stateRequestMethodParsed :: Bool,
-    stateRequestBodyParsed :: Bool,
-    stateResponded :: Bool
-    -- , stateResulted :: Bool
-  }
-
-data Request = Request
-  { requestMethod :: HTTP.Method,
-    requestPath :: Path,
-    requestQuery :: Query,
-    requestBody :: IO LazyByteString.ByteString,
-    requestHeaders :: Headers,
-    requestVault :: Vault.Vault
-  }
-
--- data Result
---   = ResultResponse Response
---   | ResultFile File
---   | ResultEventSource EventSource.EventSource
-
--- ResultJob (IO ())
-
--- data File = File
---   { fileStatus :: Natural.Natural
---   , fileHeaders :: Headers
---   , filePath :: FilePath
---   }
-
-data ResponseBody =
-  ResponseBodyRaw LazyByteString.ByteString
-  | ResponseBodyFile FilePath
-  | ResponseBodyEventSource EventSource.EventSource
-
-data Response = Response
-  { responseStatus :: Natural.Natural,
-    responseHeaders :: Headers,
-    responseBody :: ResponseBody
-  }
-
--- Add DefaultResponse type
-
--- TODO: ADD Text field to skip fo 
-data Failure = Skip | Error Response
+import qualified Okapi.Event as Event
+import Okapi.Response
+import Okapi.State
+import Okapi.Synonym
+import Prelude hiding (error)
 
 newtype OkapiT m a = OkapiT {unOkapiT :: ExceptT.ExceptT Failure (StateT.StateT State m) a}
   deriving newtype
     ( Except.MonadError Failure,
       State.MonadState State
     )
+
+-- TODO: ADD Text field to skip for logging
+data Failure = Skip | Error Response
 
 instance Functor m => Functor (OkapiT m) where
   fmap :: (a -> b) -> OkapiT m a -> OkapiT m b
@@ -206,3 +154,100 @@ type MonadOkapi m =
     Except.MonadError Failure m,
     State.MonadState State m
   )
+
+-- PRIMITIVES
+
+parseMethod :: MonadOkapi m => m HTTP.Method
+parseMethod = do
+  isMethodParsed <- methodParsed
+  if isMethodParsed
+    then skip
+    else do
+      method <- State.gets (requestMethod . stateRequest)
+      State.modify (\state -> state {stateRequestMethodParsed = True})
+      pure method
+
+parsePathSeg :: MonadOkapi m => m Text.Text
+parsePathSeg = do
+  maybePathSeg <- State.gets (safeHead . requestPath . stateRequest)
+  case maybePathSeg of
+    Nothing -> skip
+    Just pathSeg -> do
+      State.modify (\state -> state {stateRequest = (stateRequest state) {requestPath = Prelude.drop 1 $ requestPath $ stateRequest state}})
+      pure pathSeg
+  where
+    safeHead :: [a] -> Maybe a
+    safeHead [] = Nothing
+    safeHead (x : _) = Just x
+
+parseQueryItem :: MonadOkapi m => Text.Text -> m QueryItem
+parseQueryItem queryItemName = do
+  maybeQueryItem <- State.gets (Foldable.find (\(queryItemName', _) -> queryItemName == queryItemName') . requestQuery . stateRequest)
+  case maybeQueryItem of
+    Nothing -> skip
+    Just queryItem -> do
+      State.modify (\state -> state {stateRequest = (stateRequest state) {requestQuery = List.delete queryItem $ requestQuery $ stateRequest state}})
+      pure queryItem
+
+parseHeader :: MonadOkapi m => HTTP.HeaderName -> m HTTP.Header
+parseHeader headerName = do
+  maybeHeader <- State.gets (Foldable.find (\(headerName', _) -> headerName == headerName') . requestHeaders . stateRequest)
+  case maybeHeader of
+    Nothing -> skip
+    Just header -> do
+      State.modify (\state -> state {stateRequest = (stateRequest state) {requestHeaders = List.delete header $ requestHeaders $ stateRequest state}})
+      pure header
+
+parseBody :: forall m. MonadOkapi m => m LazyByteString.ByteString
+parseBody = do
+  isBodyParsed <- bodyParsed
+  if isBodyParsed
+    then skip
+    else do
+      bodyRef <- State.gets (requestBody . stateRequest)
+      body <- liftIO bodyRef
+      State.modify (\state -> state {stateRequestBodyParsed = True})
+      pure body
+
+-- ERROR FUNCTIONS
+
+skip :: forall a m. MonadOkapi m => m a
+skip = Except.throwError Skip
+
+error :: forall a m. MonadOkapi m => Response -> m a
+error = Except.throwError . Error
+
+-- | Execute the next parser even if the first one throws an Error failure
+(<!>) :: MonadOkapi m => m a -> m a -> m a
+parser1 <!> parser2 = Except.catchError parser1 (const parser2)
+
+guardError :: forall a m. MonadOkapi m => Response -> Bool -> m ()
+guardError _ True = pure ()
+guardError response False = error response
+
+optionalError :: MonadOkapi m => m a -> m (Maybe a)
+optionalError parser = (Just <$> parser) <!> pure Nothing
+
+optionError :: MonadOkapi m => a -> m a -> m a
+optionError value parser = do
+  mbValue <- optionalError parser
+  case mbValue of
+    Nothing -> pure value
+    Just value' -> pure value'
+
+-- State Checks
+
+methodParsed :: MonadOkapi m => m Bool
+methodParsed = State.gets stateRequestMethodParsed
+
+pathParsed :: MonadOkapi m => m Bool
+pathParsed = State.gets (Prelude.null . requestPath . stateRequest)
+
+queryParsed :: MonadOkapi m => m Bool
+queryParsed = State.gets (Prelude.null . requestQuery . stateRequest)
+
+headersParsed :: MonadOkapi m => m Bool
+headersParsed = State.gets (Prelude.null . requestHeaders . stateRequest)
+
+bodyParsed :: MonadOkapi m => m Bool
+bodyParsed = State.gets stateRequestBodyParsed

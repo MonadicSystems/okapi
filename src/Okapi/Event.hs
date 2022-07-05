@@ -2,22 +2,21 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
 
-module Okapi.EventSource
-  ( ToSSE (..)
-  , Event (..)
-  , EventSource
-  , newEventSource
-  , sendEvent
-  , sendValue
-  , eventSourceAppUnagiChan
+module Okapi.Event
+  ( ToSSE (..),
+    Event (..),
+    EventSource,
+    newEventSource,
+    sendEvent,
+    sendValue,
+    eventSourceAppUnagiChan,
   )
 where
 
 import qualified Control.Concurrent.Chan.Unagi as Unagi
 import qualified Control.Monad.IO.Class as IO
--- import qualified Data.ByteString as ByteString
-import qualified Data.ByteString.Lazy as ByteString
 import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Lazy as ByteString
 import qualified Data.Function as Function
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
@@ -55,7 +54,8 @@ sendValue (inChan, _outChan) = Unagi.writeChan inChan . toSSE
 sendEvent :: EventSource -> Event -> IO ()
 sendEvent (inChan, _outChan) = Unagi.writeChan inChan
 
-eventSourceAppUnagiChan :: Chan Event -> Wai.Application
+-- TODO: Below this point, put in Interface module
+eventSourceAppUnagiChan :: EventSource -> Wai.Application
 eventSourceAppUnagiChan (inChan, _outChan) req sendResponse = do
   outChan <- IO.liftIO $ Unagi.dupChan inChan
   eventSourceAppIO (eventToServerEvent <$> Unagi.readChan outChan) req sendResponse
