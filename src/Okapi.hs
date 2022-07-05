@@ -95,6 +95,7 @@ import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WarpTLS as Warp
 import qualified Network.Wai.Internal as Wai
 import Network.Wai.Middleware.Gzip (def, gzip)
+import Okapi.Event
 import qualified Okapi.Event as Event
 import Okapi.Parser
 import Okapi.Response
@@ -104,9 +105,9 @@ import qualified Web.Cookie as Cookie
 import qualified Web.FormUrlEncoded as Web
 import qualified Web.HttpApiData as Web
 import Prelude hiding (error, head)
-import Okapi.Event
 
 -- FOR RUNNING OKAPI
+
 runOkapi :: Monad m => (forall a. m a -> IO a) -> Response -> Int -> OkapiT m Response -> IO ()
 runOkapi hoister defaultResponse port okapiT = do
   print $ "Running Okapi App on port " <> show port
@@ -139,7 +140,7 @@ makeOkapiApp hoister defaultResponse okapiT waiRequest respond = do
           stateRequestMethodParsed = False
           stateRequestBodyParsed = False
           stateResponded = False
-      in State {..}
+       in State {..}
 
     responseToWaiApp :: Response -> Wai.Application
     responseToWaiApp (Response {..}) waiRequest respond = case responseBody of
@@ -264,7 +265,7 @@ bodyForm = do
     eitherToMaybe :: Either l r -> Maybe r
     eitherToMaybe either = case either of
       Left _ -> Nothing
-      Right value -> Just value 
+      Right value -> Just value
 
 -- TODO: bodyFile functions for file uploads to server?
 bodyRaw :: forall m. MonadOkapi m => m LazyByteString.ByteString
