@@ -10,6 +10,11 @@ data Route input output = Route
   , url    :: input -> URL
   }
 
+data ParamsRoute = ParamsRoute
+  { params :: Okapi (Map Text Text)
+  , url    :: Map Text Text -> URL
+  }
+
 sequencing routes
 route1 <> route2 = Route
   { parser = do
@@ -73,28 +78,44 @@ moviesRoute = [Okapi.route|
 -- Multiple Routes --
 ---------------------
 
-getMovies :: Okapi Response
-getBooks  :: Okapi Response
-putMovie  :: MovieID -> Okapi Response
-putBook   :: BookID  -> Okapi Response
+[Okapi.genApp|
+  [megaApp]
+    [app]
+      moviesRoute   = GET /movies            >> authenticate      >> getMoviesHandler
+      putMovieRoute = PUT /movies/{MovieID} >>= authenticateData >>= putMovieHandler
+      getBooksRoute = GET /books             >> authenticate      >> getBooksHandler
+      putBookRoute  = PUT /books/{BookID}   >>= authenticateData >>= putBookHandler
 
-[Okapi.module|
-  moviesRoute = do
-    GET /movies
-    returnMovies
-  putMovieRoute = do
-    PUT /movies/:MovieID >>= putMovie >> succeed
-  getBooksRoute = do
-    GET /books
-
-  putBookRoute = do
-    PUT /books/:BookID
+    [anotherApp]
+      anotherRoute  = GET /anotherPath >> anotherHandler
 |]
 
+authenticate :: Okapi ()
+
+authenticateData :: forall a. a -> Okapi a
+
+getMoviesHandler :: Okapi Response
+getBooksHandler  :: Okapi Response
+putMovieHandler  :: MovieID -> Okapi Response
+putBookHandler   :: BookID  -> Okapi Response
+anotherHandler   :: Okapi Response
+
 -- Generates:
-app -- top level parser
+megaApp :: Okapi Response
+megaApp = app <|> anotherApp
+
+app :: Okapi Response -- top level parser
+app = getMovieRoute.parser <|> putMovieRoute.parser <|> ...
+
+anotherApp :: Okapi Response
+anotherApp = anotherRoute.parser
+
 getMoviesRoute
 putMovieRoute
 getBooksRoute
 putBookRoute
+anotherRoute
+
+TODO: generate Haddock documentation too!
+https://gitlab.haskell.org/ghc/ghc/-/commit/8a59f49ae2204dbf58ef50ea8c0a50ee2c7aa64a
 -}

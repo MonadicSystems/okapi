@@ -30,18 +30,19 @@ import qualified Network.HTTP.Types as HTTP
 import qualified Okapi.Event as Event
 import Okapi.Synonym
 
+-- TODO: Just use Raw Wai Request
 data State = State
-  { stateRequest :: Request,
+  { stateRequest             :: Request,
     stateRequestMethodParsed :: Bool,
-    stateRequestBodyParsed :: Bool,
-    stateResponded :: Bool
+    stateRequestBodyParsed   :: Bool,
+    stateResponded           :: Bool
   }
 
 data Request = Request
-  { requestMethod :: HTTP.Method,
-    requestPath :: Path,
-    requestQuery :: Query,
-    requestBody :: IO LazyByteString.ByteString,
+  { requestMethod  :: HTTP.Method,
+    requestPath    :: Path,
+    requestQuery   :: Query,
+    requestBody    :: IO LazyByteString.ByteString,
     requestHeaders :: Headers,
-    requestVault :: Vault.Vault
+    requestVault   :: Vault.Vault
   }

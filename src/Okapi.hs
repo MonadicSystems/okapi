@@ -144,8 +144,8 @@ makeOkapiApp hoister defaultResponse okapiT waiRequest respond = do
 
     responseToWaiApp :: Response -> Wai.Application
     responseToWaiApp (Response {..}) waiRequest respond = case responseBody of
-      ResponseBodyRaw body -> respond $ Wai.responseLBS (toEnum $ fromEnum responseStatus) responseHeaders body
-      ResponseBodyFile filePath -> respond $ Wai.responseFile (toEnum $ fromEnum responseStatus) responseHeaders filePath Nothing
+      ResponseBodyRaw body                -> respond $ Wai.responseLBS (toEnum $ fromEnum responseStatus) responseHeaders body
+      ResponseBodyFile filePath           -> respond $ Wai.responseFile (toEnum $ fromEnum responseStatus) responseHeaders filePath Nothing
       ResponseBodyEventSource eventSource -> (gzip def $ Event.eventSourceAppUnagiChan eventSource) waiRequest respond
 
 -- METHOD HELPERS
@@ -204,6 +204,9 @@ pathParam = do
   pathSeg <- parsePathSeg
   maybe skip pure (Web.parseUrlPieceMaybe pathSeg)
 
+pathParamRaw :: forall m. MonadOkapi m => m Text.Text
+pathParamRaw = parsePathSeg
+
 pathSegWith :: forall m. MonadOkapi m => (Text.Text -> Bool) -> m ()
 pathSegWith predicate = do
   pathSeg <- parsePathSeg
@@ -217,6 +220,11 @@ queryParam :: forall a m. (MonadOkapi m, Web.FromHttpApiData a) => Text.Text -> 
 queryParam queryItemName = do
   (_, queryItemValue) <- parseQueryItem queryItemName
   maybe skip pure (Web.parseQueryParamMaybe =<< queryItemValue)
+
+queryParamRaw :: forall m. MonadOkapi m => Text.Text -> m Text.Text
+queryParamRaw queryItemName = do
+  (_, queryItemValue) <- parseQueryItem queryItemName
+  maybe skip pure queryItemValue
 
 queryFlag :: forall a m. MonadOkapi m => Text.Text -> m ()
 queryFlag queryItemName = parseQueryItem queryItemName >> pure ()
