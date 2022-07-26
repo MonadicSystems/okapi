@@ -40,16 +40,25 @@ data State = State
   }
 
 {-
-TODO: HTTPDataStore
+TODO: HTTPDataStore? Not really needed because you can just pass data normally or store in own monad
 
-newtype HTTPDataStore = HTTPDataStore (Map Text Text)
+-- This data structure should be hidden from user
+data HTTPDataStore = HTTPDataStore
+  { pathStore   :: (Map Text Text)
+  , queryStore  :: (Map Text Text)
+  , headerStore :: (Map Text Text)
+  }
 
-storePathParam :: Okapi
+-- Can only store parsed information
+storePathParam :: forall a. FromHttpApiData a => Text -> Okapi a
+storePathParam = ...
 
-storeQueryParam :: 
+storeQueryParam :: ... => Text -> Okapi a
 
-storeHeader 
+storeHeader :: ... => Text -> Okapi a
 
+-- Can fail on Map lookup and data conversion
+findPathParam :: forall a. FromHttpApiData a => Okapi a
 -}
 
 data Request = Request
