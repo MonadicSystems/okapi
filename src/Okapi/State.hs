@@ -36,7 +36,21 @@ data State = State
     stateRequestMethodParsed :: Bool,
     stateRequestBodyParsed   :: Bool,
     stateResponded           :: Bool
+    -- add HTTPDataStore???
   }
+
+{-
+TODO: HTTPDataStore
+
+newtype HTTPDataStore = HTTPDataStore (Map Text Text)
+
+storePathParam :: Okapi
+
+storeQueryParam :: 
+
+storeHeader 
+
+-}
 
 data Request = Request
   { requestMethod  :: HTTP.Method,
