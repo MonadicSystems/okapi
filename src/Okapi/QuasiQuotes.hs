@@ -47,12 +47,17 @@ cons pp1@(Path _ _)
 data Genre = Fantasy | SciFi | NonFiction | Romance
 
 -- booksRoute :: ? -- Type isn't known until code is generated at compile time
-booksRoute = [Okapi.route|GET /books/{Maybe BookID}?author={Maybe Author}&genre={Maybe Genre}|]
+booksRoute = [Okapi.route|GET /books /{Maybe BookID} ?author={Maybe Author} ?genre={Maybe Genre}|]
 
 booksURL :: URL
 booksURL = booksRoute.url (Nothing, Just "Mark Twain", Nothing)
 
-booksRouteName = [Okapi.route|GET /books /:bookID ?author=:authorName &genre=:genre|]
+booksRouteNamed = [Okapi.genRoute|GET /books /:bookID ?author=:authorName ?:genre|]
+
+newProduct :: Okapi Response
+newProduct = do
+  validProductID <- [Okapi.genParser|POST /products/{ProductID|isValid}|]
+  ...
 
 books :: Okapi Response
 books = booksRoute.parser >>= booksHandler
@@ -63,15 +68,19 @@ books = booksRoute.parser >>= booksHandler
 
 isModern :: Date -> Bool
 
-childActorsFilter :: [Actor] -> [Actor]
+childActors :: [Actor] -> [Actor]
+
+bornInIndiana :: [Actor] -> [Actor]
 
 -- Could be gen parser
 -- parser generator for headers?
 moviesRoute = [Okapi.route|
   GET,HEAD
   /movies/{Date|isModern}
-  ?director={Director}&actors={[Actor]->childActorsFilter}
+  ?director={Director}&actors={[Actor]->childActors->bornInIndiana|notEmpty}
 |]
+
+THE ABOVE MAY BE PARTIAL ROUTES WITHOUT EVERY PIECE OF A URL
 
 ---------------------
 -- Multiple Routes --
@@ -80,13 +89,15 @@ moviesRoute = [Okapi.route|
 [Okapi.genApp|
   [megaApp]
     [app]
-      moviesRoute   = GET /movies            >> authenticate      >> getMoviesHandler
-      putMovieRoute = PUT /movies/{MovieID} >>= authenticateData >>= putMovieHandler
-      getBooksRoute = GET /books             >> authenticate      >> getBooksHandler
-      putBookRoute  = PUT /books/{BookID}   >>= authenticateData >>= putBookHandler
+      moviesRoute   = GET /movies             >> authenticate      >> getMoviesHandler
+      putMovieRoute = PUT /movies /{MovieID} >>= authenticateData >>= putMovieHandler
+      getBooksRoute = GET /books              >> authenticate      >> getBooksHandler
+      putBookRoute  = PUT /books /{BookID}   >>= authenticateData >>= putBookHandler
 
     [anotherApp]
-      anotherRoute  = GET /anotherPath >> anotherHandler
+      anotherRoute = GET /anotherPath >> anotherHandler
+
+    someOtherRoute = ...
 |]
 
 authenticate :: Okapi ()
