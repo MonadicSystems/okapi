@@ -30,10 +30,12 @@ library
       Okapi
       Okapi.Event
       Okapi.Parser
+      Okapi.QuasiQuotes
       Okapi.Response
       Okapi.Routes
       Okapi.State
       Okapi.Synonym
+      Okapi.Test
   other-modules:
       Paths_okapi
   hs-source-dirs:

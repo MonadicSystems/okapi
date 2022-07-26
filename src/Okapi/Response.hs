@@ -93,6 +93,13 @@ noContent =
       responseBody = ResponseBodyRaw ""
    in Response {..}
 
+notFound :: Response
+notFound =
+  let responseStatus = 404
+      responseHeaders = []
+      responseBody = ResponseBodyRaw "Not Found"
+    in Response {..}
+
 unauthorized :: Response
 unauthorized =
   let responseStatus = 401
