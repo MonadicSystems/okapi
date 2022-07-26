@@ -47,13 +47,12 @@ cons pp1@(Path _ _)
 data Genre = Fantasy | SciFi | NonFiction | Romance
 
 -- booksRoute :: ? -- Type isn't known until code is generated at compile time
-booksRoute = [Okapi.route|GET /books/:Maybe BookID?author=:Maybe Author&genre=:Maybe Genre|]
+booksRoute = [Okapi.route|GET /books/{Maybe BookID}?author={Maybe Author}&genre={Maybe Genre}|]
 
 booksURL :: URL
 booksURL = booksRoute.url (Nothing, Just "Mark Twain", Nothing)
 
-authenticate :: a -> Okapi a
-authenticate = undefined
+booksRouteName = [Okapi.route|GET /books /:bookID ?author=:authorName &genre=:genre|]
 
 books :: Okapi Response
 books = booksRoute.parser >>= booksHandler

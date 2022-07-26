@@ -33,6 +33,7 @@ import Okapi.Synonym
 -- TODO: Just use Raw Wai Request
 data State = State
   { stateRequest             :: Request,
+    -- TODO: Remove state checkers??
     stateRequestMethodParsed :: Bool,
     stateRequestBodyParsed   :: Bool,
     stateResponded           :: Bool
@@ -40,7 +41,8 @@ data State = State
   }
 
 {-
-TODO: HTTPDataStore? Not really needed because you can just pass data normally or store in own monad
+TODO: HTTPDataStore? Not really needed because you can just pass data normally or store in own monad.
+One benefit is that the data is available to all sub-branches without explicitly passing them to every sub-branch.
 
 -- This data structure should be hidden from user
 data HTTPDataStore = HTTPDataStore
