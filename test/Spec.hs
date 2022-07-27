@@ -2,6 +2,8 @@
 {-# LANGUAGE TypeApplications #-}
 
 import Control.Monad.Combinators
+import Control.Monad.Identity
+import Control.Monad.IO.Class
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import Network.HTTP.Types
@@ -9,7 +11,7 @@ import Network.Wai.Test
 import qualified Okapi
 import Network.Wai
 import Data.Text
-import qualified Okapi.Test
+import Okapi.Test
 
 type Okapi = Okapi.OkapiT IO
 
@@ -30,12 +32,12 @@ testServer = do
         parser3 = do
             Okapi.get
             Okapi.pathSeg "todos"
-            todoStatus <- Okapi.queryParam @Text "status"
+            _ <- Okapi.queryParam @Text "status"
             return Okapi.ok
 
         parser4 = do
             Okapi.get
-            Okapi.pathSeg ""
+            Okapi.pathSeg "a"
             return Okapi.ok
 
     choice
@@ -45,22 +47,25 @@ testServer = do
         , parser4
         ]
 
-get :: BS.ByteString -> Session SResponse
-get url = request $ setPath (defaultRequest { requestMethod = methodGet }) url
-
 testSession :: Session ()
 testSession = do
-    response1 <- get "/todos"
-    assertStatus 200 response1
+    (testRequest $ TestRequest methodGet [] "/todos" "")
+        >>= assertStatus 200
 
-    response2 <- get "/todos/completed"
-    assertStatus 200 response2
+    (testRequest $ TestRequest methodGet [] "/todos/completed" "")
+        >>= assertStatus 200
 
-    response3 <- get "/what"
-    assertStatus 404 response3
+    (testRequest $ TestRequest methodGet [] "/todos?status=done" "")
+        >>= assertStatus 200
 
-    response4 <- get "/"
-    assertStatus 200 response4
+    (testRequest $ TestRequest methodGet [] "/todos?progress=finished" "")
+        >>= assertStatus 404
+
+    (testRequest $ TestRequest methodGet [] "/what" "")
+        >>= assertStatus 404
+
+    (testRequest $ TestRequest methodGet [] "/a" "")
+        >>= assertStatus 200
 
 main :: IO ()
-main = Okapi.Test.runSession testSession id testServer
+main = Okapi.Test.runSession testSession liftIO testServer

@@ -46,7 +46,7 @@ dependencies:
 library:
   source-dirs: src
 
-executables:
+# executables:
   # realworld-exe:
   #   main:                Main.hs
   #   source-dirs:         examples/realworld
@@ -64,73 +64,73 @@ executables:
   #   - time
   #   - vector
   #   - profunctors
-  calc-exe:
-    main:                Main.hs
-    source-dirs:         examples/calc
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-  todo-exe:
-    main:                Main.hs
-    source-dirs:         examples/todo
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-  chess-exe:
-    main:                Main.hs
-    source-dirs:         examples/chess
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-    - aeson
-    - bytestring
-    - extra
-    - interpolatedstring-perl6
-    - http-api-data 
-    - lucid
-    - lucid-htmx
-    - text
-    - time
-    - slave-thread
-    - stm
-    - unagi-chan
-    - containers
-    - parser-combinators
-  servant-exe:
-    main:                Main.hs
-    source-dirs:         examples/servant
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-    - lucid
-    - parser-combinators
-    - servant
-    - servant-lucid
-    - servant-server
-  sse-exe:
-    main:                Main.hs
-    source-dirs:         examples/sse
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - okapi
-    - slave-thread
-    - time
-    - bytestring
+  # calc-exe:
+  #   main:                Main.hs
+  #   source-dirs:         examples/calc
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - okapi
+  # todo-exe:
+  #   main:                Main.hs
+  #   source-dirs:         examples/todo
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - okapi
+  # chess-exe:
+  #   main:                Main.hs
+  #   source-dirs:         examples/chess
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - okapi
+  #   - aeson
+  #   - bytestring
+  #   - extra
+  #   - interpolatedstring-perl6
+  #   - http-api-data 
+  #   - lucid
+  #   - lucid-htmx
+  #   - text
+  #   - time
+  #   - slave-thread
+  #   - stm
+  #   - unagi-chan
+  #   - containers
+  #   - parser-combinators
+  # servant-exe:
+  #   main:                Main.hs
+  #   source-dirs:         examples/servant
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - okapi
+  #   - lucid
+  #   - parser-combinators
+  #   - servant
+  #   - servant-lucid
+  #   - servant-server
+  # sse-exe:
+  #   main:                Main.hs
+  #   source-dirs:         examples/sse
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - okapi
+  #   - slave-thread
+  #   - time
+  #   - bytestring
 
 tests:
   okapi-test:

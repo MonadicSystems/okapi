@@ -33,6 +33,8 @@ setResponseStatus status response = response {responseStatus = status}
 setResponseHeaders :: Headers -> Response -> Response
 setResponseHeaders headers response = response {responseHeaders = headers}
 
+-- setResponseCookie
+
 setResponseHeader :: HTTP.Header -> Response -> Response
 setResponseHeader header response@Response {..} =
   response {responseHeaders = update header responseHeaders}

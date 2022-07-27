@@ -43,8 +43,10 @@ module Okapi
     pathSeg,
     path,
     pathParam,
+    pathParamRaw,
     -- QUERY HELPERS
     queryParam,
+    queryParamRaw,
     queryFlag,
     -- HEADER HELPERS
     header,
