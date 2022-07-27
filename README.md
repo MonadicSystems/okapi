@@ -2,8 +2,6 @@
 
 A microframework based on monadic parsing. Official documentation [here](https://www.okapi.wiki/).
 
-import Callout from 'nextra-theme-docs/callout'
-
 ## Introduction
 
 **Okapi** is a microframework for building web servers using parsers.
