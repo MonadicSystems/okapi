@@ -27,7 +27,9 @@ greet = do
 ```
 
 Running this code will start a server on [localhost:3000](http://localhost:3000.org).
-If you go to [http://localhost:3000/greeting/Bob]() the server will respond with `Hello Bob! I'm Okapi.` in plain text format.
+If you go to [http://localhost:3000/greeting/Bob]() the server will respond with
+```Hello Bob! I'm Okapi.```
+in plain text format.
 
 Okapi provides [monadic parsers](https://www.cs.nott.ac.uk/~pszgmh/monparsing.pdf) for extracting data from HTTP requests.
 Since they are monads, parsers can be used with all `Applicative`, `Alternative`, and `Monad` typeclass methods, plus other Haskell idioms like [parser combinators](https://hackage.haskell.org/package/parser-combinators).
