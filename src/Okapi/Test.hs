@@ -34,7 +34,10 @@ data TestRequest = TestRequest
 
 testRequest :: TestRequest -> Wai.Test.Session Wai.Test.SResponse
 testRequest TestRequest{..} =
-    let request = Wai.defaultRequest { Wai.requestMethod = testRequestMethod, Wai.requestHeaders = testRequestHeaders }
+    let request = Wai.defaultRequest
+            { Wai.requestMethod = testRequestMethod
+            , Wai.requestHeaders = testRequestHeaders
+            }
         simpleRequest = Wai.Test.setPath request testRequestRawPath
         simpleRequestBody = testRequestBody
         finalRequest = Wai.Test.SRequest simpleRequest simpleRequestBody

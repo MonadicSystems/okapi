@@ -6,11 +6,13 @@ import Control.Monad.Identity
 import Control.Monad.IO.Class
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
+import Data.Function
 import Network.HTTP.Types
 import Network.Wai.Test
 import qualified Okapi
 import Network.Wai
 import Data.Text
+import Data.Text.Encoding
 import Okapi.Test
 
 type Okapi = Okapi.OkapiT IO
@@ -21,24 +23,26 @@ testServer = do
         parser1 = do
             Okapi.get
             Okapi.pathSeg "todos"
-            return Okapi.ok
+            Okapi.respond Okapi.ok
 
         parser2 = do
             Okapi.get
             Okapi.pathSeg "todos"
             Okapi.pathSeg "completed"
-            return Okapi.ok
+            Okapi.respond Okapi.ok
 
         parser3 = do
             Okapi.get
             Okapi.pathSeg "todos"
-            _ <- Okapi.queryParam @Text "status"
-            return Okapi.ok
+            status <- Okapi.queryParam @Text "status"
+            Okapi.ok
+                & Okapi.setResponseBody (Okapi.ResponseBodyRaw $ LBS.fromStrict $ encodeUtf8 status)
+                & Okapi.respond
 
         parser4 = do
             Okapi.get
             Okapi.pathSeg "a"
-            return Okapi.ok
+            Okapi.respond Okapi.ok
 
     choice
         [ parser1
@@ -49,22 +53,23 @@ testServer = do
 
 testSession :: Session ()
 testSession = do
-    (testRequest $ TestRequest methodGet [] "/todos" "")
+    testRequest (TestRequest methodGet [] "/todos" "")
         >>= assertStatus 200
 
-    (testRequest $ TestRequest methodGet [] "/todos/completed" "")
+    testRequest (TestRequest methodGet [] "/todos/completed" "")
         >>= assertStatus 200
 
-    (testRequest $ TestRequest methodGet [] "/todos?status=done" "")
-        >>= assertStatus 200
+    res3 <- testRequest $ TestRequest methodGet [] "/todos?status=done" ""
+    assertStatus 200 res3
+    assertBody "done" res3
 
-    (testRequest $ TestRequest methodGet [] "/todos?progress=finished" "")
+    testRequest (TestRequest methodGet [] "/todos?progress=finished" "")
         >>= assertStatus 404
 
-    (testRequest $ TestRequest methodGet [] "/what" "")
+    testRequest (TestRequest methodGet [] "/what" "")
         >>= assertStatus 404
 
-    (testRequest $ TestRequest methodGet [] "/a" "")
+    testRequest (TestRequest methodGet [] "/a" "")
         >>= assertStatus 200
 
 main :: IO ()

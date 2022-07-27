@@ -60,6 +60,8 @@ module Okapi
     newEventSource,
     sendEvent,
     sendValue,
+    -- RESPONSE HELPERS
+    respond,
   )
 where
 
@@ -280,3 +282,10 @@ bodyForm = do
 -- TODO: bodyFile functions for file uploads to server?
 bodyRaw :: forall m. MonadOkapi m => m LazyByteString.ByteString
 bodyRaw = parseBody
+
+respond :: forall m. MonadOkapi m => Response -> m Response
+respond response = do
+  check1 <- methodParsed
+  check2 <- pathParsed
+  check3 <- queryParsed
+  if check1 && check2 && check3 then return response else skip
