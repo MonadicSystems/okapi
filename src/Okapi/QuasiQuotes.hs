@@ -132,7 +132,7 @@ anotherRoute
 TODO: generate Haddock documentation too!
 https://gitlab.haskell.org/ghc/ghc/-/commit/8a59f49ae2204dbf58ef50ea8c0a50ee2c7aa64a
 -}
-
+{-
 -- genRoute creates a full route. Must have at least a method and return a response handler.
 genRoute :: Q Exp
 genRoute = undefined
@@ -147,3 +147,4 @@ genApp = undefined
 
 genOptimalApp :: Q [Dec]
 genOptimalApp = undefined
+-}

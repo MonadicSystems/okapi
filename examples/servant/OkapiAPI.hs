@@ -16,37 +16,37 @@ okapiApplication = makeOkapiApp id okapiAPI
 
 type Okapi a = OkapiT IO a
 
-okapiAPI :: Okapi Result
+okapiAPI :: Okapi Response
 okapiAPI = do
   get
   seg "okapi"
   _ <- optional $ seg "" -- Trailing slash...This is needed for now but we can change it so it's automatically handled
   okLucid [] (Greeting "okapi") <|> calc
 
-calc :: Okapi Result
+calc :: Okapi Response
 calc = do
   seg "calc"
   addOp <|> subOp <|> mulOp <|> divOp
 
-addOp :: Okapi Result
+addOp :: Okapi Response
 addOp = do
   seg "add"
   (x, y) <- getArgs
   okLucid [] $ AddResult x y $ x + y
 
-subOp :: Okapi Result
+subOp :: Okapi Response
 subOp = do
   seg "sub" <|> seg "minus"
   (x, y) <- getArgs
   okLucid [] $ SubResult x y $ x - y
 
-mulOp :: Okapi Result
+mulOp :: Okapi Response
 mulOp = do
   seg "mul"
   (x, y) <- getArgs
   okLucid [] $ MulResult x y $ x * y
 
-divOp :: Okapi Result
+divOp :: Okapi Response
 divOp = do
   seg "div"
   (x, y) <- getArgs
