@@ -29,6 +29,7 @@ library
   exposed-modules:
       Okapi
       Okapi.Event
+      Okapi.FastParser
       Okapi.Parser
       Okapi.QuasiQuotes
       Okapi.Response

@@ -139,8 +139,11 @@ genRoute = undefined
 
 -- Can use any part of the routing syntax to create a parser, but no URL is created just a parser.
 genParser :: Q Exp
+genParser = undefined
 
 -- Generate entire top level parser. Basically multiple routes
 genApp :: Q [Dec]
+genApp = undefined
 
 genOptimalApp :: Q [Dec]
+genOptimalApp = undefined
