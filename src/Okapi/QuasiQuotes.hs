@@ -3,16 +3,13 @@ module Okapi.QuasiQuotes where
 {-
 newtype URL = URL Text
 
+data URLParam = forall a. ToHttpApiData a => URLParam a
+
 -- Maybe should just generate parser? But I thought the point was to get info for URL?
 -- Maybe instead of generating URL have URL builder helpers?
-data Route input output = Route
-  { parser :: Okapi output
+data Route input = Route
+  { parser :: Okapi Response
   , url    :: input -> URL
-  }
-
-data ParamsRoute = ParamsRoute
-  { params :: Okapi (Map Text Text)
-  , url    :: Map Text Text -> URL
   }
 
 sequencing routes
@@ -36,6 +33,8 @@ newtype Author = Author Text deriving (FromHttpApiData)
 
 data URL = Empty | PathPiece Text | QueryPiece Text Text | Path URL URL
 
+TODO: What TO DO with partial URLs???????????
+
 cons :: URL -> URL -> URL
 cons Empty Empty            = Empty
 cons Empty pp@(PathPiece _) = Path Empty pp
@@ -47,12 +46,12 @@ cons pp1@(Path _ _)
 data Genre = Fantasy | SciFi | NonFiction | Romance
 
 -- booksRoute :: ? -- Type isn't known until code is generated at compile time
-booksRoute = [Okapi.route|GET /books /{Maybe BookID} ?author={Maybe Author} ?genre={Maybe Genre}|]
+booksRoute = [Okapi.route|GET /books /{Maybe BookID} ?author{Maybe Author} ?genre{Maybe Genre}|]
 
 booksURL :: URL
 booksURL = booksRoute.url (Nothing, Just "Mark Twain", Nothing)
 
-booksRouteNamed = [Okapi.genRoute|GET /books /:bookID ?author=:authorName ?:genre|]
+booksRouteNamed = [Okapi.genRoute|GET /books /:bookID ?author:authorName ?genre:|]
 
 newProduct :: Okapi Response
 newProduct = do
@@ -75,9 +74,12 @@ bornInIndiana :: [Actor] -> [Actor]
 -- Could be gen parser
 -- parser generator for headers?
 moviesRoute = [Okapi.route|
-  GET,HEAD
-  /movies/{Date|isModern}
-  ?director={Director}&actors={[Actor]->childActors->bornInIndiana|notEmpty}
+  GET HEAD
+  /movies
+  /{Date|isModern}
+  ?director{Director}
+  ?actors{[Actor]->childActors->bornInIndiana|notEmpty}
+  ?female
 |]
 
 THE ABOVE MAY BE PARTIAL ROUTES WITHOUT EVERY PIECE OF A URL
@@ -89,6 +91,7 @@ THE ABOVE MAY BE PARTIAL ROUTES WITHOUT EVERY PIECE OF A URL
 [Okapi.genApp|
   [megaApp]
     [app]
+      homeRoute     = GET /                                        >> getHome
       moviesRoute   = GET /movies             >> authenticate      >> getMoviesHandler
       putMovieRoute = PUT /movies /{MovieID} >>= authenticateData >>= putMovieHandler
       getBooksRoute = GET /books              >> authenticate      >> getBooksHandler
@@ -129,3 +132,15 @@ anotherRoute
 TODO: generate Haddock documentation too!
 https://gitlab.haskell.org/ghc/ghc/-/commit/8a59f49ae2204dbf58ef50ea8c0a50ee2c7aa64a
 -}
+
+-- genRoute creates a full route. Must have at least a method and return a response handler.
+genRoute :: Q Exp
+genRoute = undefined
+
+-- Can use any part of the routing syntax to create a parser, but no URL is created just a parser.
+genParser :: Q Exp
+
+-- Generate entire top level parser. Basically multiple routes
+genApp :: Q [Dec]
+
+genOptimalApp :: Q [Dec]
