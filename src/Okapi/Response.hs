@@ -27,13 +27,15 @@ data ResponseBody
   | ResponseBodyFile FilePath
   | ResponseBodyEventSource Event.EventSource
 
+-- RESPONSE SETTERS (Hidden)
+
 setResponseStatus :: Natural.Natural -> Response -> Response
 setResponseStatus status response = response {responseStatus = status}
 
 setResponseHeaders :: Headers -> Response -> Response
 setResponseHeaders headers response = response {responseHeaders = headers}
 
--- setResponseCookie
+-- TODO: setResponseCookie
 
 setResponseHeader :: HTTP.Header -> Response -> Response
 setResponseHeader header response@Response {..} =
@@ -49,44 +51,14 @@ setResponseHeader header response@Response {..} =
 setResponseBody :: ResponseBody -> Response -> Response
 setResponseBody body response = response {responseBody = body}
 
--- TODO: setResponseCookie
+-- STATUS CODE RESPONSES
+
 ok :: Response
 ok =
   let responseStatus = 200
       responseHeaders = []
       responseBody = ResponseBodyRaw ""
    in Response {..}
-
-okHTML :: LazyByteString.ByteString -> Response
-okHTML html =
-  ok
-    & setResponseHeader ("Content-Type", "text/html")
-    & setResponseBody (ResponseBodyRaw html)
-
-okPlainText :: Text.Text -> Response
-okPlainText text =
-  let raw = LazyByteString.fromStrict . Text.encodeUtf8 $ text
-   in ok
-        & setResponseHeader ("Content-Type", "text/plain")
-        & setResponseBody (ResponseBodyRaw raw)
-
-okJSON :: forall a. Aeson.ToJSON a => a -> Response
-okJSON value =
-  let raw = Aeson.encode value
-   in ok
-        & setResponseHeader ("Content-Type", "application/json")
-        & setResponseBody (ResponseBodyRaw raw)
-
-okLucid :: forall a. Lucid.ToHtml a => a -> Response
-okLucid value =
-  let raw = Lucid.renderBS . Lucid.toHtml $ value
-   in okHTML raw
-
-okFile :: FilePath -> Response
-okFile filePath = ok & setResponseBody (ResponseBodyFile filePath)
-
-okEventSource :: Event.EventSource -> Response
-okEventSource eventSource = ok & setResponseBody (ResponseBodyEventSource eventSource)
 
 noContent :: Response
 noContent =
@@ -123,3 +95,37 @@ redirectTo url =
       responseHeaders = [("Location", url)]
       responseBody = ResponseBodyRaw ""
    in Response {..}
+
+-- RESPONSE BODY MODIFIERS
+
+plaintext :: Text.Text -> Response -> Response
+plaintext text response =
+  response
+    & setResponseHeader ("Content-Type", "text/plain")
+    & setResponseBody (ResponseBodyRaw $ LazyByteString.fromStrict . Text.encodeUtf8 $ text)
+
+html :: LazyByteString.ByteString -> Response -> Response
+html htmlRaw response =
+  response
+    & setResponseBody (ResponseBodyRaw htmlRaw)
+    & setResponseHeader ("Content-Type", "text/html")
+
+json :: LazyByteString.ByteString -> Response -> Response
+json bytes response =
+  response
+    & setResponseHeader ("Content-Type", "application/json")
+    & setResponseBody (ResponseBodyRaw bytes)
+
+file :: FilePath -> Response -> Response
+file path = setResponseBody (ResponseBodyFile path) -- TODO: setHeader???
+
+eventSource :: Event.EventSource -> Response -> Response
+eventSource source response =
+  response &
+    setResponseBody (ResponseBodyEventSource source)
+
+aeson :: forall a. Aeson.ToJSON a => a -> Response -> Response
+aeson = json . Aeson.encode
+
+lucid :: forall a. Lucid.ToHtml a => a -> Response -> Response
+lucid = html . Lucid.renderBS . Lucid.toHtml
