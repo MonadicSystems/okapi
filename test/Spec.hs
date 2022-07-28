@@ -11,43 +11,57 @@ import Data.Text
 import Data.Text.Encoding
 import Network.HTTP.Types
 import Network.Wai
+import Network.Wai.EventSource (ServerEvent (RetryEvent))
 import Network.Wai.Test
-import qualified Okapi
+import Okapi
+import qualified Okapi (Response)
 import Okapi.Test
 
-type Okapi = Okapi.OkapiT IO
+type Okapi = OkapiT IO
 
 testServer :: Okapi Okapi.Response
 testServer = do
   let parser1 = do
-        Okapi.get
-        Okapi.pathSeg "todos"
-        Okapi.respond Okapi.ok
+        get
+        pathSeg "todos"
+        respond ok
 
       parser2 = do
-        Okapi.get
-        Okapi.pathSeg "todos"
-        Okapi.pathSeg "completed"
-        Okapi.respond Okapi.ok
+        get
+        path ["todos", "completed"]
+        respond ok
 
       parser3 = do
-        Okapi.get
-        Okapi.pathSeg "todos"
-        status <- Okapi.queryParam @Text "status"
-        Okapi.ok
-          & Okapi.plaintext status
-          & Okapi.respond
+        get
+        pathSeg "todos"
+        status <- queryParam "status"
+        ok
+          & plaintext status
+          & respond
 
       parser4 = do
-        Okapi.get
-        Okapi.pathSeg "a"
-        Okapi.respond Okapi.ok
+        get
+        pathSeg "a"
+        respond ok
+
+      parser5 = do
+        get
+        pathSeg "todos"
+        queryFlag "progress"
+        respond ok
+
+      parser6 = do
+        get
+        pathSeg ""
+        respond ok
 
   choice
     [ parser1,
       parser2,
       parser3,
-      parser4
+      parser4,
+      parser5,
+      parser6
     ]
 
 testSession :: Session ()
@@ -65,13 +79,19 @@ testSession = do
   assertStatus 200 res3
   assertBody "done" res3
 
-  testRequest (TestRequest methodGet [] "/todos?progress=finished" "")
+  testRequest (TestRequest methodGet [] "/todos?progress" "")
+    >>= assertStatus 200
+
+  testRequest (TestRequest methodGet [] "/todos?what" "")
     >>= assertStatus 404
 
   testRequest (TestRequest methodGet [] "/what" "")
     >>= assertStatus 404
 
   testRequest (TestRequest methodGet [] "/a" "")
+    >>= assertStatus 200
+
+  testRequest (TestRequest methodGet [] "/" "")
     >>= assertStatus 200
 
 main :: IO ()
