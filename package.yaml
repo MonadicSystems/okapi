@@ -64,24 +64,25 @@ executables:
   #   - time
   #   - vector
   #   - profunctors
-  calc-exe:
+  calculator-exe:
     main:                Main.hs
-    source-dirs:         examples/calc
+    source-dirs:         examples/calculator
     ghc-options:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
     - okapi
-  # todo-exe:
-  #   main:                Main.hs
-  #   source-dirs:         examples/todo
-  #   ghc-options:
-  #   - -threaded
-  #   - -rtsopts
-  #   - -with-rtsopts=-N
-  #   dependencies:
-  #   - okapi
+  todo-exe:
+    main:                Main.hs
+    source-dirs:         examples/todo
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - okapi
+    - sqlite-simple
   # chess-exe:
   #   main:                Main.hs
   #   source-dirs:         examples/chess
