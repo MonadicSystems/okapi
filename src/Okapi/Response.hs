@@ -51,20 +51,20 @@ setResponseHeader header response@Response {..} =
 setResponseBody :: ResponseBody -> Response -> Response
 setResponseBody body response = response {responseBody = body}
 
--- STATUS CODE RESPONSES
+-- BASE RESPONSES
 
 ok :: Response
 ok =
   let responseStatus = 200
       responseHeaders = []
-      responseBody = ResponseBodyRaw ""
+      responseBody = ResponseBodyRaw "OK"
    in Response {..}
 
 noContent :: Response
 noContent =
   let responseStatus = 204
       responseHeaders = []
-      responseBody = ResponseBodyRaw ""
+      responseBody = ResponseBodyRaw "No Content"
    in Response {..}
 
 notFound :: Response
@@ -78,14 +78,14 @@ unauthorized :: Response
 unauthorized =
   let responseStatus = 401
       responseHeaders = []
-      responseBody = ResponseBodyRaw ""
+      responseBody = ResponseBodyRaw "Unauthorized"
    in Response {..}
 
 internalServerError :: Response
 internalServerError =
   let responseStatus = 500
       responseHeaders = []
-      responseBody = ResponseBodyRaw ""
+      responseBody = ResponseBodyRaw "Internal Server Error"
    in Response {..}
 
 -- TODO: Change type of URL?

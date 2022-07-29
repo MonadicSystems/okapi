@@ -17,12 +17,22 @@ import qualified Network.Wai as Wai
 import Network.Wai.Test (setRawPathInfo)
 import Data.Function
 
-runSession :: Monad m => Wai.Test.Session a -> (forall a. m a -> IO a) -> OkapiT m Response -> IO a
+runSession
+    :: Monad m
+    => Wai.Test.Session a
+    -> (forall a. m a -> IO a)
+    -> OkapiT m Response
+    -> IO a
 runSession session hoister okapiT = do
     let app = makeOkapiApp hoister notFound okapiT
     Wai.Test.runSession session app
 
-withSession :: Monad m => (forall a. m a -> IO a) -> OkapiT m Response -> Wai.Test.Session a -> IO a
+withSession
+    :: Monad m
+    => (forall a. m a -> IO a)
+    -> OkapiT m Response
+    -> Wai.Test.Session a
+    -> IO a
 withSession hoister okapiT session = runSession session hoister okapiT
 
 data TestRequest = TestRequest
@@ -32,13 +42,27 @@ data TestRequest = TestRequest
     , testRequestBody    :: LBS.ByteString
     }
 
-testRequest :: TestRequest -> Wai.Test.Session Wai.Test.SResponse
-testRequest TestRequest{..} =
+send :: TestRequest -> Wai.Test.Session Wai.Test.SResponse
+send TestRequest{..} =
     let request = Wai.defaultRequest
-            { Wai.requestMethod = testRequestMethod
+            { Wai.requestMethod  = testRequestMethod
             , Wai.requestHeaders = testRequestHeaders
             }
         simpleRequest = Wai.Test.setPath request testRequestRawPath
         simpleRequestBody = testRequestBody
         finalRequest = Wai.Test.SRequest simpleRequest simpleRequestBody
     in Wai.Test.srequest finalRequest
+
+testParser
+    :: Monad m
+    => (forall a. m a -> IO a)
+    -> OkapiT m Response
+    -> TestRequest
+    -> IO (Either Failure Response, State)
+testParser hoister okapiT testRequest = (StateT.runStateT . ExceptT.runExceptT . unOkapiT $ Morph.hoist hoister okapiT) (testRequestToState testRequest)
+
+testRequestToState :: TestRequest -> State
+testRequestToState = undefined
+
+testRequestToSRequest :: TestRequest -> Wai.Test.SRequest
+testRequestToSRequest = undefined

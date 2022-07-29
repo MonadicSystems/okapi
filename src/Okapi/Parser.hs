@@ -214,8 +214,8 @@ parseBody = do
 skip :: forall a m. MonadOkapi m => m a
 skip = Except.throwError Skip
 
-error :: forall a m. MonadOkapi m => Response -> m a
-error = Except.throwError . Error
+throw :: forall a m. MonadOkapi m => Response -> m a
+throw = Except.throwError . Error
 
 -- | Execute the next parser even if the first one throws an Error failure
 (<!>) :: MonadOkapi m => m a -> m a -> m a
@@ -223,7 +223,7 @@ parser1 <!> parser2 = Except.catchError parser1 (const parser2)
 
 guardError :: forall a m. MonadOkapi m => Response -> Bool -> m ()
 guardError _ True = pure ()
-guardError response False = error response
+guardError response False = throw response
 
 optionalError :: MonadOkapi m => m a -> m (Maybe a)
 optionalError parser = (Just <$> parser) <!> pure Nothing
