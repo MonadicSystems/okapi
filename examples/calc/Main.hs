@@ -6,38 +6,41 @@ module Main where
 
 import Control.Applicative ((<|>))
 import Data.Aeson (ToJSON)
+import Data.Function ((&))
 import Data.Text
 import GHC.Generics (Generic)
 import Okapi
 
 main :: IO ()
-main = runOkapi id 3000 calc
+main = runOkapi id notFound 3000 calc
 
 type Okapi a = OkapiT IO a
 
-calc :: Okapi Result
+calc :: Okapi Response
 calc = do
   get
-  seg "calc"
+  pathSeg "calc"
   addOp <|> subOp <|> mulOp <|> divOp
 
-addOp :: Okapi Result
+addOp :: Okapi Response
 addOp = do
-  seg "add"
+  pathSeg "add"
   (x, y) <- getArgs
-  okJSON [] $ x + y
+  respond $
+    aeson (x + y) ok
 
-subOp :: Okapi Result
+subOp :: Okapi Response
 subOp = do
-  seg "sub" <|> seg "minus"
+  pathSeg "sub" <|> pathSeg "minus"
   (x, y) <- getArgs
-  okJSON [] $ x - y
+  respond $
+    ok & aeson (x - y)
 
-mulOp :: Okapi Result
+mulOp :: Okapi Response
 mulOp = do
-  seg "mul"
+  pathSeg "mul"
   (x, y) <- getArgs
-  okJSON [] $ x * y
+  ok & aeson (x * y) & respond
 
 data DivResult = DivResult
   { answer :: Int,
@@ -45,21 +48,24 @@ data DivResult = DivResult
   }
   deriving (Eq, Show, Generic, ToJSON)
 
-divOp :: Okapi Result
+divOp :: Okapi Response
 divOp = do
-  seg "div"
+  pathSeg "div"
   (x, y) <- getArgs
   if y == 0
-    then error403 [] "Forbidden"
-    else okJSON [] $ DivResult {answer = x `div` y, remainder = x `mod` y}
+    then throw forbidden
+    else
+      ok
+        & aeson DivResult {answer = x `div` y, remainder = x `mod` y}
+        & respond
 
 getArgs :: Okapi (Int, Int)
 getArgs = getArgsFromPath <|> getArgsFromQueryParams
   where
     getArgsFromPath :: Okapi (Int, Int)
     getArgsFromPath = do
-      x <- segParam
-      y <- segParam
+      x <- pathParam
+      y <- pathParam
       pure (x, y)
 
     getArgsFromQueryParams :: Okapi (Int, Int)

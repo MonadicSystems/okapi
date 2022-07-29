@@ -46,7 +46,7 @@ dependencies:
 library:
   source-dirs: src
 
-# executables:
+executables:
   # realworld-exe:
   #   main:                Main.hs
   #   source-dirs:         examples/realworld
@@ -64,15 +64,15 @@ library:
   #   - time
   #   - vector
   #   - profunctors
-  # calc-exe:
-  #   main:                Main.hs
-  #   source-dirs:         examples/calc
-  #   ghc-options:
-  #   - -threaded
-  #   - -rtsopts
-  #   - -with-rtsopts=-N
-  #   dependencies:
-  #   - okapi
+  calc-exe:
+    main:                Main.hs
+    source-dirs:         examples/calc
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - okapi
   # todo-exe:
   #   main:                Main.hs
   #   source-dirs:         examples/todo

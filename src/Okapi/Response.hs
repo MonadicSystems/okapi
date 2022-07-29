@@ -67,12 +67,19 @@ noContent =
       responseBody = ResponseBodyRaw "No Content"
    in Response {..}
 
+forbidden :: Response
+forbidden =
+  let responseStatus = 403
+      responseHeaders = []
+      responseBody = ResponseBodyRaw "Forbidden"
+   in Response {..}
+
 notFound :: Response
 notFound =
   let responseStatus = 404
       responseHeaders = []
       responseBody = ResponseBodyRaw "Not Found"
-    in Response {..}
+   in Response {..}
 
 unauthorized :: Response
 unauthorized =
@@ -121,8 +128,8 @@ file path = setResponseBody (ResponseBodyFile path) -- TODO: setHeader???
 
 eventSource :: Event.EventSource -> Response -> Response
 eventSource source response =
-  response &
-    setResponseBody (ResponseBodyEventSource source)
+  response
+    & setResponseBody (ResponseBodyEventSource source)
 
 aeson :: forall a. Aeson.ToJSON a => a -> Response -> Response
 aeson = json . Aeson.encode
